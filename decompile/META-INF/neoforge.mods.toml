@@ -1,0 +1,26 @@
+modLoader = "javafml"
+loaderVersion = "[3,)"
+issueTrackerURL = "https://github.com/NEZNAMY/TAB/issues"
+license = "Apache License Version 2.0"
+displayURL = "https://github.com/NEZNAMY/TAB"
+
+[[mods]]
+modId = "tab"
+version = "5.4.0"
+displayName = "TAB"
+authors = "NEZNAMY"
+credits = "@credits@"
+description = '''An all-in-one solution that works'''
+
+[[dependencies.tab]]
+modId = "neoforge"
+type = "required"
+ordering = "NONE"
+side = "SERVER"
+
+[[dependencies.tab]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.11]"
+ordering = "NONE"
+side = "SERVER"

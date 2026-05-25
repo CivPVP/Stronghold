@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "tab",
+  "version": "5.4.0",
+  "name": "TAB",
+  "description": "An all-in-one solution that works",
+  "authors": ["NEZNAMY"],
+  "contributors": ["credits"],
+  "environment": "server",
+  "entrypoints": {
+    "server": ["me.neznamy.tab.platforms.fabric.FabricTAB"]
+  },
+  "depends": {
+    "fabric-api-base": "*",
+    "java": ">=21",
+    "minecraft": [
+      "1.21.11"
+    ]
+  },
+  "recommends": {
+    "fabric-permissions-api-v0": "*"
+  },
+  "accessWidener": "resources/tab.accesswidener"
+}

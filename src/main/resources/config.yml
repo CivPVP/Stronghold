@@ -1,0 +1,98 @@
+teams:
+  max_teams: 16
+
+broadcast:
+  carrier_interval_seconds: 30
+  carrier_message: "&f{player} is carrying {flags} at {x}, {y}, {z} in {world}!"
+  flag_stolen_message: "&f{player} stole &b{team}'s Flag&f!"
+  flag_dropped_message: "&f{player} dropped &b{team}'s Flag&f at {x}, {y}, {z}!"
+  flag_returned_message: "&b{team}'s Flag has returned to its vault."
+
+bossbar:
+  countdown_title: "&fFlag deployment in: &b{time}"
+  active_title: "&fEvent ends in: &b{time}"
+  paused_title: "&7[PAUSED] &f— &b{time} &fremaining"
+  color: BLUE
+  style: SOLID
+
+tab:
+  prefix_enabled: true
+  name_color_enabled: true
+
+glow:
+  enabled: true
+  randomize_multi_flag_color: true
+
+event:
+  default_countdown_duration: "1d"
+  default_endgame_duration: "2d"
+  carrier_effects_active_phase_only: true
+
+protection:
+  prevent_vault_explosion: true
+  prevent_flag_burn: true
+  prevent_flag_in_non_vault_containers: true
+
+flags_gui:
+  title: "&f&lFlag Status"
+  in_vault_icon: GREEN_BANNER
+  held_icon: YELLOW_BANNER
+  dropped_icon: RED_BANNER
+  filler_material: BLACK_STAINED_GLASS_PANE
+
+sounds:
+  flag_stolen: BLOCK_NOTE_BLOCK_BASS
+  flag_returned: BLOCK_CHEST_OPEN
+  event_start: ENTITY_ENDER_DRAGON_GROWL
+  event_end: UI_TOAST_CHALLENGE_COMPLETE
+  winner_announce: ENTITY_PLAYER_LEVELUP
+
+event_end:
+  title_winner: "&b{team} wins!"
+  title_tie: "&fTie! Multiple teams win!"
+  subtitle: "&fWith &b{count}&f flag(s) captured"
+  broadcast_message: "&fEvent ended! Winner(s): {teams} &fwith {count} flag(s)!"
+
+messages:
+  not_op: "&cYou must be an operator to use this command."
+  not_captain: "&cYou must be a team captain to use this command."
+  not_in_team: "&cYou are not on a team."
+  vault_locked: "&cYour vault is locked. Contact an operator to change it."
+  vault_not_barrel: "&cYou must be looking at a barrel (within 5 blocks)."
+  vault_set: "&bVault set for &f{team}&b."
+  team_created: "&bTeam &f{team}&b created."
+  team_deleted: "&cTeam &f{team}&c deleted."
+  invalid_color: "&cInvalid color. Valid colors: WHITE, ORANGE, MAGENTA, LIGHT_BLUE, YELLOW, LIME, PINK, GRAY, LIGHT_GRAY, CYAN, PURPLE, BLUE, BROWN, GREEN, RED, BLACK"
+  invalid_team_name: "&cTeam name may only contain letters, numbers, and underscores (no spaces or special characters)."
+  team_name_taken: "&cA team with that name already exists."
+  max_teams_reached: "&cMaximum number of teams ({max}) has been reached."
+  team_not_found: "&cTeam '{team}' not found."
+  player_not_found: "&cPlayer '{player}' not found."
+  player_not_in_team: "&cThat player is not in team '{team}'."
+  player_already_in_team: "&cThat player is already in team '{team}'."
+  player_in_other_team: "&cThat player is already in another team."
+  captain_set: "&bSet &f{player}&b as captain of &f{team}&b."
+  member_added: "&bAdded &f{player}&b to team &f{team}&b."
+  member_removed: "&bRemoved &f{player}&b from team &f{team}&b."
+  event_already_running: "&cAn event is already running."
+  event_not_running: "&cNo event is currently running."
+  event_not_paused: "&cThe event is not paused."
+  event_started: "&bEvent started! Flags deploy in: &f{time}"
+  event_stopped: "&cEvent stopped by an operator."
+  event_paused: "&bEvent paused. Time remaining: &f{time}"
+  event_resumed: "&bEvent resumed."
+  event_reset: "&cEvent has been reset."
+  flags_deployed: "&b&lFlags have been deployed! The event is now ACTIVE!"
+  no_vault: "&cTeam '{team}' has no vault configured. They will not receive a flag."
+  flag_given: "&bFlag for &f{team}&b has been moved to your inventory."
+  flag_returned_admin: "&bFlag for &f{team}&b has been force-returned to its vault."
+  flag_reset: "&bFlag for &f{team}&b has been reset."
+  backup_created: "&bBackup created: &f{file}"
+  restore_complete: "&bRestore complete from: &f{file}"
+  repair_complete: "&bRepair complete. Issues fixed: &f{count}"
+  reloaded: "&bStronghold configuration reloaded."
+  idle_only: "&cThis command can only be used when no event is running."
+  active_only: "&cThis command can only be used during an active event."
+  vault_changed: "&bVault for &f{team}&b moved. Flags transferred."
+  team_renamed: "&bTeam renamed from &f{old}&b to &f{new}&b."
+  team_recolored: "&bTeam &f{team}&b color changed to &f{color}&b."

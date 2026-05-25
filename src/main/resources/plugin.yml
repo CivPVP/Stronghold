@@ -1,0 +1,29 @@
+name: Stronghold
+description: Large-scale multi-team Capture the Flag plugin
+version: '${version}'
+
+main: net.meddle.stronghold.Stronghold
+api-version: '1.21'
+load: POSTWORLD
+softdepend: [TAB]
+
+authors: [ meddle, Claude Code ]
+website: civpvp.net
+
+commands:
+  stronghold:
+    description: Main Stronghold admin command
+    usage: /stronghold <subcommand>
+    aliases: [sh]
+  setflagvault:
+    description: Set your team's flag vault (captain only)
+    usage: /setflagvault
+  flag:
+    description: Show the location of a specific team's flag
+    usage: /flag <team>
+  flags:
+    description: View all flag locations
+    usage: /flags
+  vaults:
+    description: View all team vault locations and their contents
+    usage: /vaults
