@@ -117,45 +117,27 @@ public class VaultProtectionListener implements Listener {
 
         Team playerTeam = teams.getTeamOf(p.getUniqueId());
 
-        // Teamless players: deny flag removal and flag placement
+        // Teamless players: deny flag removal, allow deposit (tracked)
         if (playerTeam == null) {
-            if (isRemovingFlag(e) || flags.isFlag(cursor)) e.setCancelled(true);
+            if (isRemovingFlag(e)) {
+                e.setCancelled(true);
+                return;
+            }
+            trackFlagDeposit(e, vault, p);
             return;
         }
 
-        // Same team: deny removing flags, allow non-flag removal
+        // Same team: deny removing flags, allow deposit (tracked)
         if (playerTeam.getName().equals(vault.getName())) {
             if (isRemovingFlag(e)) {
                 e.setCancelled(true);
                 return;
             }
-            // Cursor drag into vault slot
-            if (flags.isFlag(cursor) && e.getClickedInventory() == e.getInventory()) {
-                String owner = flags.getFlagOwner(cursor);
-                if (owner != null) {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        flags.onFlagStoredInVault(owner, vault.getName());
-                        plugin.getFlagCarrierListener().applyGlowForPlayer(p);
-                    });
-                }
-            }
-            // Shift-click from player inventory into vault
-            if (flags.isFlag(current)
-                    && e.getAction() == org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY
-                    && e.getClickedInventory() != e.getInventory()) {
-                String owner = flags.getFlagOwner(current);
-                if (owner != null) {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        flags.onFlagStoredInVault(owner, vault.getName());
-                        plugin.getFlagCarrierListener().applyGlowForPlayer(p);
-                    });
-                }
-            }
+            trackFlagDeposit(e, vault, p);
             return;
         }
 
-        // Enemy team: allow all (they can steal flags)
-        // Track flag removal from vault
+        // Enemy team: allow all; track both removal and deposit
         if (isRemovingFlag(e)) {
             ItemStack removed = current != null && flags.isFlag(current) ? current : cursor;
             if (flags.isFlag(removed)) {
@@ -168,6 +150,7 @@ public class VaultProtectionListener implements Listener {
                 }
             }
         }
+        trackFlagDeposit(e, vault, p);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -243,6 +226,33 @@ public class VaultProtectionListener implements Listener {
             };
         }
         return false;
+    }
+
+    private void trackFlagDeposit(InventoryClickEvent e, Team vault, Player p) {
+        ItemStack cursor  = e.getCursor();
+        ItemStack current = e.getCurrentItem();
+        // Cursor drag into vault slot
+        if (flags.isFlag(cursor) && e.getClickedInventory() == e.getInventory()) {
+            String owner = flags.getFlagOwner(cursor);
+            if (owner != null) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    flags.onFlagStoredInVault(owner, vault.getName());
+                    plugin.getFlagCarrierListener().applyGlowForPlayer(p);
+                });
+            }
+        }
+        // Shift-click from player inventory into vault
+        if (flags.isFlag(current)
+                && e.getAction() == org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && e.getClickedInventory() != e.getInventory()) {
+            String owner = flags.getFlagOwner(current);
+            if (owner != null) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    flags.onFlagStoredInVault(owner, vault.getName());
+                    plugin.getFlagCarrierListener().applyGlowForPlayer(p);
+                });
+            }
+        }
     }
 
     private boolean isShiftMoveToNonVault(InventoryClickEvent e) {

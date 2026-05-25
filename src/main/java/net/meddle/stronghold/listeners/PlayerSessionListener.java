@@ -5,7 +5,6 @@ import net.meddle.stronghold.Msg;
 import net.meddle.stronghold.Stronghold;
 import net.meddle.stronghold.flag.FlagManager;
 import net.meddle.stronghold.flag.FlagRecord;
-import net.meddle.stronghold.flag.FlagState;
 import net.meddle.stronghold.team.Team;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
@@ -87,6 +86,5 @@ public class PlayerSessionListener implements Listener {
 
         // Clear glow state
         p.setGlowing(false);
-        plugin.getScoreboardManager().setGlowColor(p, null);
     }
 }

@@ -71,18 +71,9 @@ public class FlagCarrierListener {
         List<String> held = flags.getFlagsHeldBy(p.getUniqueId());
         if (held.isEmpty()) {
             p.setGlowing(false);
-            plugin.getScoreboardManager().setGlowColor(p, null);
             return;
         }
-        if (!plugin.getCfg().isGlowEnabled()) return;
-        String chosen = plugin.getCfg().isRandomizeMultiFlagColor()
-            ? held.get((int) (Math.random() * held.size()))
-            : held.get(0);
-        Team t = plugin.getTeamManager().getTeam(chosen);
-        if (t != null) {
-            p.setGlowing(true);
-            plugin.getScoreboardManager().setGlowColor(p, t.getColor());
-        }
+        if (plugin.getCfg().isGlowEnabled()) p.setGlowing(true);
     }
 
     /** Re-applies glow to all online flag carriers. Call after reload or phase change. */
@@ -94,18 +85,9 @@ public class FlagCarrierListener {
             List<String> held = flags.getFlagsHeldBy(p.getUniqueId());
             if (held.isEmpty() || (activeOnly && !isActive)) {
                 p.setGlowing(false);
-                plugin.getScoreboardManager().setGlowColor(p, null);
                 continue;
             }
-            if (!plugin.getCfg().isGlowEnabled()) continue;
-            String chosen = plugin.getCfg().isRandomizeMultiFlagColor()
-                ? held.get((int) (Math.random() * held.size()))
-                : held.get(0);
-            Team t = plugin.getTeamManager().getTeam(chosen);
-            if (t != null) {
-                p.setGlowing(true);
-                plugin.getScoreboardManager().setGlowColor(p, t.getColor());
-            }
+            if (plugin.getCfg().isGlowEnabled()) p.setGlowing(true);
         }
     }
 }

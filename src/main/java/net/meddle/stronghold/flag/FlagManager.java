@@ -391,10 +391,7 @@ public class FlagManager {
         saveAll();
 
         // Clear glow from all online players
-        for (var p : Bukkit.getOnlinePlayers()) {
-            p.setGlowing(false);
-            plugin.getScoreboardManager().setGlowColor(p, null);
-        }
+        for (var p : Bukkit.getOnlinePlayers()) p.setGlowing(false);
     }
 
     private void retireFlagItem(FlagRecord r) {
