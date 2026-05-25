@@ -62,7 +62,6 @@ public class ConfigManager {
     // ── Glow ──────────────────────────────────────────────────────────────────
 
     public boolean isGlowEnabled()               { return cfg.getBoolean("glow.enabled", true); }
-    public boolean isRandomizeMultiFlagColor()    { return cfg.getBoolean("glow.randomize_multi_flag_color", true); }
 
     // ── Event ─────────────────────────────────────────────────────────────────
 

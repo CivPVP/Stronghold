@@ -115,7 +115,6 @@ public class FlagItemListener implements Listener {
         }
 
         p.setGlowing(false);
-        plugin.getScoreboardManager().setGlowColor(p, null);
     }
 
     // ── Lava / Fire protection ────────────────────────────────────────────────

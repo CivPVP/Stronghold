@@ -21,7 +21,6 @@ tab:
 
 glow:
   enabled: true
-  randomize_multi_flag_color: true
 
 event:
   default_countdown_duration: "1d"

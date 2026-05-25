@@ -76,28 +76,6 @@ public class TeamScoreboardManager {
         clearTabColor(p);
     }
 
-    /**
-     * Sets the player's scoreboard team to a temporary glow-color team.
-     * Pass null to restore their actual team color.
-     */
-    public void setGlowColor(Player p, DyeColor flagColor) {
-        String glowKey = "sh_g_" + p.getName();
-        if (glowKey.length() > 16) glowKey = glowKey.substring(0, 16);
-
-        org.bukkit.scoreboard.Team old = scoreboard.getTeam(glowKey);
-        if (old != null) old.unregister();
-
-        if (flagColor == null) {
-            Team t = plugin.getTeamManager().getTeamOf(p.getUniqueId());
-            if (t != null) addPlayer(p, t);
-            return;
-        }
-
-        org.bukkit.scoreboard.Team glow = scoreboard.registerNewTeam(glowKey);
-        glow.color(dyeToNamedColor(flagColor));
-        glow.addEntry(p.getName());
-    }
-
     // ── TAB plugin integration ────────────────────────────────────────────────
 
     public void applyTabColor(Player p, Team t) {
