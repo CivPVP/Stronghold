@@ -1,0 +1,18 @@
+package me.neznamy.tab.libs.com.rabbitmq.client;
+
+public enum BuiltinExchangeType {
+   DIRECT("direct"),
+   FANOUT("fanout"),
+   TOPIC("topic"),
+   HEADERS("headers");
+
+   private final String type;
+
+   BuiltinExchangeType(String type) {
+      this.type = type;
+   }
+
+   public String getType() {
+      return this.type;
+   }
+}

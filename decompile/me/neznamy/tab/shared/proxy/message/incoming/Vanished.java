@@ -1,0 +1,26 @@
+package me.neznamy.tab.shared.proxy.message.incoming;
+
+import com.google.common.io.ByteArrayDataInput;
+import me.neznamy.tab.shared.TAB;
+import me.neznamy.tab.shared.placeholders.types.PlayerPlaceholderImpl;
+import me.neznamy.tab.shared.proxy.ProxyTabPlayer;
+import org.jetbrains.annotations.NotNull;
+
+public class Vanished implements IncomingMessage {
+   private boolean vanished;
+
+   @Override
+   public void read(@NotNull ByteArrayDataInput in) {
+      this.vanished = in.readBoolean();
+   }
+
+   @Override
+   public void process(@NotNull ProxyTabPlayer player) {
+      if (player.isVanished() != this.vanished) {
+         player.setVanished(this.vanished);
+         TAB.getInstance().getFeatureManager().onVanishStatusChange(player);
+         ((PlayerPlaceholderImpl)TAB.getInstance().getPlaceholderManager().getPlaceholder("%vanished%"))
+            .updateValue(player, Boolean.toString(player.isVanished()));
+      }
+   }
+}

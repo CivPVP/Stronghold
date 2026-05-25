@@ -1,0 +1,1 @@
+{"id":"tab","name":"TAB","version":"5.4.0","description":"An all-in-one solution that works","url":"https://github.com/NEZNAMY/TAB","authors":["NEZNAMY"],"dependencies":[{"id":"velocity-scoreboard-api","optional":true}],"main":"me.neznamy.tab.platforms.velocity.VelocityTAB"}
