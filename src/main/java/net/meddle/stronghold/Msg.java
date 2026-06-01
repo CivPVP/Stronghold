@@ -1,6 +1,7 @@
 package net.meddle.stronghold;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.meddle.stronghold.team.Team;
@@ -14,12 +15,11 @@ public final class Msg {
     public static final TextColor LIGHT_BLUE = TextColor.color(0x55FFFF);
     public static final TextColor RED        = TextColor.color(0xFF5555);
 
-    // [CivPvP)] — "Civ" white, "PvP)" light blue
     public static final Component PREFIX =
-        Component.text("[", LIGHT_BLUE)
-            .append(Component.text("Civ", WHITE))
-            .append(Component.text("PvP)", LIGHT_BLUE))
-            .append(Component.text("] ", LIGHT_BLUE));
+        Component.text("[", LIGHT_BLUE).decorate(TextDecoration.BOLD)
+            .append(Component.text("Civ", WHITE).decorate(TextDecoration.BOLD))
+            .append(Component.text("PvP", LIGHT_BLUE).decorate(TextDecoration.BOLD))
+            .append(Component.text("] ", LIGHT_BLUE).decorate(TextDecoration.BOLD));
 
     private Msg() {}
 

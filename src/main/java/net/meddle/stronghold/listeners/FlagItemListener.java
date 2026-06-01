@@ -4,8 +4,11 @@ import net.kyori.adventure.text.Component;
 import net.meddle.stronghold.Msg;
 import net.meddle.stronghold.Stronghold;
 import net.meddle.stronghold.flag.FlagManager;
+import net.meddle.stronghold.flag.FlagRecord;
+import net.meddle.stronghold.flag.FlagState;
 import net.meddle.stronghold.team.Team;
 import net.meddle.stronghold.team.TeamManager;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -41,6 +44,11 @@ public class FlagItemListener implements Listener {
 
         if (flags.isDuplicate(item)) {
             e.getItem().remove();
+            e.setCancelled(true);
+            return;
+        }
+
+        if (teams.getTeamOf(p.getUniqueId()) == null) {
             e.setCancelled(true);
             return;
         }
@@ -106,29 +114,46 @@ public class FlagItemListener implements Listener {
             String owner = flags.getFlagOwner(item);
             if (owner == null) continue;
 
-            plugin.getServer().getScheduler().runTask(plugin, () ->
-                p.getWorld().getNearbyEntities(p.getLocation(), 3, 3, 3).stream()
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                Entity found = p.getWorld().getNearbyEntities(p.getLocation(), 5, 5, 5).stream()
                     .filter(en -> en instanceof Item it && flags.isFlagOf(it.getItemStack(), owner))
-                    .findFirst()
-                    .ifPresent(en -> flags.onFlagDropped(owner, en.getLocation(), en.getUniqueId()))
-            );
+                    .findFirst().orElse(null);
+
+                if (found != null) {
+                    flags.onFlagDropped(owner, found.getLocation(), found.getUniqueId());
+                } else {
+                    // Item entity already gone (e.g. fell into void on death) — return directly
+                    FlagRecord r = flags.getRecord(owner);
+                    if (r != null && r.getState() == FlagState.HELD) {
+                        Team vaultTeam = flags.placeInLastVault(owner);
+                        if (vaultTeam != null) {
+                            Team ot = teams.getTeam(owner);
+                            Msg.broadcast(
+                                (ot != null ? Msg.teamName(ot) : Component.text(owner, Msg.LIGHT_BLUE))
+                                    .append(Component.text("'s Flag has returned to its vault.", Msg.LIGHT_BLUE))
+                            );
+                        }
+                    }
+                }
+            });
         }
 
         p.setGlowing(false);
     }
 
-    // ── Lava / Fire protection ────────────────────────────────────────────────
+    // ── Environmental destruction protection ──────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onItemDamage(EntityDamageEvent e) {
-        if (!plugin.getCfg().isPreventFlagBurn()) return;
         if (!(e.getEntity() instanceof Item item)) return;
         if (!flags.isFlag(item.getItemStack())) return;
-
-        switch (e.getCause()) {
-            case FIRE, FIRE_TICK, LAVA, MELTING, VOID -> e.setCancelled(true);
-            default -> {}
-        }
+        // VOID and KILL let the entity die so the orphan check can recover it.
+        // Everything else (fire, lava, cactus, explosions…) is cancelled.
+        // KILL: let the entity die so EntityRemoveEvent(DEATH) fires and the UUID lookup returns the flag.
+        // Everything else (void, fire, lava, cactus, explosions…) is cancelled — void is detected
+        // via the Y < 0 periodic check instead, which avoids relying on Paper void-damage events.
+        if (e.getCause() == EntityDamageEvent.DamageCause.KILL) return;
+        e.setCancelled(true);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

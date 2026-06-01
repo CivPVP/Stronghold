@@ -7,7 +7,6 @@ net\meddle\stronghold\commands\SetFlagVaultCommand.class
 net\meddle\stronghold\Stronghold.class
 net\meddle\stronghold\bossbar\BossBarManager$1.class
 net\meddle\stronghold\listeners\VaultProtectionListener$1.class
-net\meddle\stronghold\listeners\FlagItemListener$1.class
 net\meddle\stronghold\commands\StrongholdCommand.class
 net\meddle\stronghold\gui\VaultsGui.class
 net\meddle\stronghold\bossbar\BossBarManager.class
@@ -15,6 +14,7 @@ net\meddle\stronghold\listeners\VaultProtectionListener.class
 net\meddle\stronghold\flag\FlagManager.class
 net\meddle\stronghold\scoreboard\TeamScoreboardManager.class
 net\meddle\stronghold\team\TeamManager.class
+net\meddle\stronghold\listeners\FlagDespawnListener$1.class
 net\meddle\stronghold\team\Team.class
 net\meddle\stronghold\event\EventManager$1.class
 net\meddle\stronghold\commands\FlagCommand.class
