@@ -6,6 +6,7 @@ import net.meddle.stronghold.Stronghold;
 import net.meddle.stronghold.flag.FlagRecord;
 import net.meddle.stronghold.team.Team;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -70,9 +71,14 @@ public class FlagsGui implements Listener {
                     lore.add("&7Carrier: &f" + (r.getHolderName() != null ? r.getHolderName() : "Unknown"));
                 }
                 case DROPPED -> {
+                    Location loc = plugin.getFlagManager().getDroppedLocation(team.getName());
                     lore.add("&7Status: &cDropped in world");
-                    lore.add("&7World: &f" + r.getDroppedWorld());
-                    lore.add("&7Location: &f" + (int) r.getDroppedX() + ", " + (int) r.getDroppedY() + ", " + (int) r.getDroppedZ());
+                    if (loc != null) {
+                        lore.add("&7World: &f" + loc.getWorld().getName());
+                        lore.add("&7Location: &f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ());
+                    } else {
+                        lore.add("&7Location: &funknown");
+                    }
                 }
             }
         }

@@ -6,6 +6,7 @@ import net.meddle.stronghold.Stronghold;
 import net.meddle.stronghold.flag.FlagRecord;
 import net.meddle.stronghold.team.Team;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -76,9 +77,14 @@ public class FlagCommand implements CommandExecutor, TabCompleter {
                 }
             }
             case DROPPED -> {
-                detail = Component.text("dropped at ", Msg.LIGHT_BLUE)
-                    .append(Component.text((int) r.getDroppedX() + ", " + (int) r.getDroppedY()
-                        + ", " + (int) r.getDroppedZ() + " (" + r.getDroppedWorld() + ")", Msg.WHITE));
+                Location loc = plugin.getFlagManager().getDroppedLocation(team.getName());
+                if (loc != null) {
+                    detail = Component.text("dropped at ", Msg.LIGHT_BLUE)
+                        .append(Component.text(loc.getBlockX() + ", " + loc.getBlockY() + ", "
+                            + loc.getBlockZ() + " (" + loc.getWorld().getName() + ")", Msg.WHITE));
+                } else {
+                    detail = Component.text("dropped — location unknown", Msg.LIGHT_BLUE);
+                }
             }
             default -> detail = Component.text("unknown location", Msg.LIGHT_BLUE);
         }

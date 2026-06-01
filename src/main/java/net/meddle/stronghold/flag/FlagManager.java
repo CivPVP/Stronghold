@@ -221,32 +221,46 @@ public class FlagManager {
 
     /** Force-returns flag to the lastVaultTeam's vault. Recreates barrel if needed. */
     public void returnFlagToVault(String teamName) {
-        FlagRecord r = records.get(teamName);
-        if (r == null) return;
-
-        // Remove from current location
         removeFlagFromWorld(teamName);
+        placeInLastVault(teamName);
+    }
+
+    /**
+     * Places the flag into its last vault without touching the physical item entity —
+     * callers must remove the item themselves before calling this.
+     * Loads the chunk and recreates the barrel if missing.
+     * Returns the vault Team on success, null if no vault could be found.
+     */
+    public Team placeInLastVault(String teamName) {
+        FlagRecord r = records.get(teamName);
+        if (r == null) return null;
 
         String vaultTeamName = r.getLastVaultTeam();
         Team vaultTeam = plugin.getTeamManager().getTeam(vaultTeamName);
         if (vaultTeam == null) vaultTeam = plugin.getTeamManager().getTeam(teamName);
         if (vaultTeam == null || !vaultTeam.isVaultSet()) {
             plugin.getLogger().warning("[Flag] Cannot return " + teamName + "'s flag — no vault found.");
-            return;
+            return null;
         }
 
         Location loc = vaultTeam.getVaultLocation();
-        if (loc == null) return;
+        if (loc == null) return null;
+
+        if (!loc.getChunk().isLoaded()) loc.getChunk().load();
 
         Block b = loc.getBlock();
-        if (b.getType() != Material.BARREL) b.setType(Material.BARREL);
+        if (b.getType() != Material.BARREL) {
+            b.setType(Material.BARREL);
+            plugin.getLogger().info("[Flag] Recreated barrel at " + vaultTeam.getName() + "'s vault.");
+        }
 
         Barrel barrel = (Barrel) b.getState();
         barrel.getInventory().addItem(createFlagItem(plugin.getTeamManager().getTeam(teamName)));
 
         r.setInVault(vaultTeam.getName());
         save(r);
-        plugin.getLogger().info("[Flag] " + teamName + "'s flag returned to " + vaultTeam.getName() + "'s vault");
+        plugin.getLogger().info("[Flag] " + teamName + "'s flag placed in " + vaultTeam.getName() + "'s vault.");
+        return vaultTeam;
     }
 
     /** Removes the physical flag from wherever it is in the world (inventory, item entity). */
@@ -349,6 +363,23 @@ public class FlagManager {
     public FlagRecord getRecord(String teamName)          { return records.get(teamName); }
     public Collection<FlagRecord> getAllRecords()         { return Collections.unmodifiableCollection(records.values()); }
     public boolean hasRecord(String teamName)             { return records.containsKey(teamName); }
+
+    /**
+     * Live location of a dropped flag: entity position if loaded, stored coords otherwise.
+     * Returns null if the flag is not DROPPED or has no location data.
+     */
+    public Location getDroppedLocation(String teamName) {
+        FlagRecord r = records.get(teamName);
+        if (r == null || r.getState() != FlagState.DROPPED) return null;
+        if (r.getDroppedEntityUUID() != null) {
+            Entity entity = Bukkit.getEntity(r.getDroppedEntityUUID());
+            if (entity != null) return entity.getLocation();
+        }
+        if (r.getDroppedWorld() == null) return null;
+        var world = Bukkit.getWorld(r.getDroppedWorld());
+        if (world == null) return null;
+        return new Location(world, r.getDroppedX(), r.getDroppedY(), r.getDroppedZ());
+    }
 
     /** Returns all flags currently held by the given player (by team name). */
     public List<String> getFlagsHeldBy(UUID playerUUID) {
@@ -477,24 +508,14 @@ public class FlagManager {
             Location vaultLoc = team.getVaultLocation();
             if (vaultLoc != null) {
                 Block b = vaultLoc.getBlock();
-                plugin.getLogger().info("[Score] " + team.getName() + " vault block=" + b.getType()
-                    + " at " + b.getX() + "," + b.getY() + "," + b.getZ());
                 if (b.getType() == Material.BARREL) {
                     Barrel barrel = (Barrel) b.getState();
                     for (ItemStack item : barrel.getInventory().getContents()) {
                         String owner = getFlagOwner(item);
-                        if (owner != null) {
-                            plugin.getLogger().info("[Score]   barrel slot: owner=" + owner
-                                + " ownTeam=" + team.getName() + " counted=" + !owner.equals(team.getName()));
-                            if (!owner.equals(team.getName())) counted.add(owner);
-                        }
+                        if (owner != null) counted.add(owner);
                     }
                 }
-            } else {
-                plugin.getLogger().info("[Score] " + team.getName() + " vault location is null");
             }
-        } else {
-            plugin.getLogger().info("[Score] " + team.getName() + " has no vault set");
         }
 
         // 2. Physical inventory scan of online members
@@ -503,27 +524,21 @@ public class FlagManager {
             if (p == null) continue;
             for (ItemStack item : p.getInventory().getContents()) {
                 String owner = getFlagOwner(item);
-                if (owner != null && !owner.equals(team.getName())) {
-                    plugin.getLogger().info("[Score]   " + p.getName() + " carrying: owner=" + owner);
-                    counted.add(owner);
-                }
+                if (owner != null) counted.add(owner);
             }
         }
 
         // 3. FlagRecord fallback for offline holders
         for (FlagRecord r : records.values()) {
-            if (r.getOwnerTeam().equals(team.getName())) continue;
             if (counted.contains(r.getOwnerTeam())) continue;
             if (r.getState() == FlagState.HELD
                     && r.getHolderUUID() != null
                     && team.getMembers().contains(r.getHolderUUID())
                     && Bukkit.getPlayer(r.getHolderUUID()) == null) {
-                plugin.getLogger().info("[Score]   offline holder " + r.getHolderName() + " has " + r.getOwnerTeam());
                 counted.add(r.getOwnerTeam());
             }
         }
 
-        plugin.getLogger().info("[Score] " + team.getName() + " final score=" + counted.size() + " flags=" + counted);
         return counted.size();
     }
 

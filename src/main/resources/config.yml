@@ -28,7 +28,6 @@ event:
   carrier_effects_active_phase_only: true
 
 protection:
-  prevent_vault_explosion: true
   prevent_flag_burn: true
   prevent_flag_in_non_vault_containers: true
 

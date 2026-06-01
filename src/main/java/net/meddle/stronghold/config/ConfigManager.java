@@ -71,7 +71,6 @@ public class ConfigManager {
 
     // ── Protection ────────────────────────────────────────────────────────────
 
-    public boolean isPreventVaultExplosion()         { return cfg.getBoolean("protection.prevent_vault_explosion", true); }
     public boolean isPreventFlagBurn()               { return cfg.getBoolean("protection.prevent_flag_burn", true); }
     public boolean isPreventFlagInNonVaultContainers() { return cfg.getBoolean("protection.prevent_flag_in_non_vault_containers", true); }
 

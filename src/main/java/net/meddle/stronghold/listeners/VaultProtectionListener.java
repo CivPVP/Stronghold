@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockDropItemEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -45,12 +46,7 @@ public class VaultProtectionListener implements Listener {
         Player p = e.getPlayer();
 
         if (p.isOp()) {
-            // Operators can break — handle any flags inside
             flags.onVaultDestroyed(vault);
-            // Clear vault registration
-            vault.setVaultRaw(null, 0, 0, 0);
-            vault.setVaultLocked(false);
-            teams.save(vault);
             return;
         }
 
@@ -67,17 +63,30 @@ public class VaultProtectionListener implements Listener {
         flags.onVaultDestroyed(vault);
     }
 
+    // ── Vault barrel drop tracking ────────────────────────────────────────────
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBlockDropItem(BlockDropItemEvent e) {
+        Block b = e.getBlock();
+        // The barrel is already broken (AIR) here — skip the type check and look up by coords directly.
+        Team vault = teams.getTeamByVault(b.getWorld().getName(), b.getX(), b.getY(), b.getZ());
+        if (vault == null) return;
+        for (org.bukkit.entity.Item item : e.getItems()) {
+            String owner = flags.getFlagOwner(item.getItemStack());
+            if (owner == null) continue;
+            flags.onFlagDropped(owner, item.getLocation(), item.getUniqueId());
+        }
+    }
+
     // ── Explosion protection ──────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent e) {
-        if (!plugin.getCfg().isPreventVaultExplosion()) return;
         e.blockList().removeIf(b -> b.getType() == Material.BARREL && getVaultTeam(b) != null);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent e) {
-        if (!plugin.getCfg().isPreventVaultExplosion()) return;
         e.blockList().removeIf(b -> b.getType() == Material.BARREL && getVaultTeam(b) != null);
     }
 
@@ -117,13 +126,12 @@ public class VaultProtectionListener implements Listener {
 
         Team playerTeam = teams.getTeamOf(p.getUniqueId());
 
-        // Teamless players: deny flag removal, allow deposit (tracked)
+        // Teamless players: deny all flag interactions
         if (playerTeam == null) {
-            if (isRemovingFlag(e)) {
+            if (isRemovingFlag(e) || flags.isFlag(e.getCursor())
+                    || flags.isFlag(e.getCurrentItem())) {
                 e.setCancelled(true);
-                return;
             }
-            trackFlagDeposit(e, vault, p);
             return;
         }
 
@@ -150,6 +158,12 @@ public class VaultProtectionListener implements Listener {
                 }
             }
         }
+        // Prevent depositing own team's flag into an enemy vault
+        String depositOwner = getDepositedFlagOwner(e);
+        if (depositOwner != null && depositOwner.equals(playerTeam.getName())) {
+            e.setCancelled(true);
+            return;
+        }
         trackFlagDeposit(e, vault, p);
     }
 
@@ -167,10 +181,19 @@ public class VaultProtectionListener implements Listener {
         Team vault = getVaultFromInventory(e.getInventory());
         if (vault == null) return;
 
-        // Track flag stored in vault + remove glow
+        Player dragger = (Player) e.getWhoClicked();
+        if (teams.getTeamOf(dragger.getUniqueId()) == null) {
+            e.setCancelled(true);
+            return;
+        }
         String owner = flags.getFlagOwner(e.getOldCursor());
         if (owner != null) {
-            Player dragger = (Player) e.getWhoClicked();
+            // Prevent depositing own team's flag into an enemy vault
+            Team dragTeam = teams.getTeamOf(dragger.getUniqueId());
+            if (dragTeam != null && owner.equals(dragTeam.getName()) && !vault.getName().equals(dragTeam.getName())) {
+                e.setCancelled(true);
+                return;
+            }
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 flags.onFlagStoredInVault(owner, vault.getName());
                 plugin.getFlagCarrierListener().applyGlowForPlayer(dragger);
@@ -226,6 +249,18 @@ public class VaultProtectionListener implements Listener {
             };
         }
         return false;
+    }
+
+    private String getDepositedFlagOwner(InventoryClickEvent e) {
+        ItemStack cursor = e.getCursor();
+        if (flags.isFlag(cursor) && e.getClickedInventory() == e.getInventory())
+            return flags.getFlagOwner(cursor);
+        ItemStack current = e.getCurrentItem();
+        if (flags.isFlag(current)
+                && e.getAction() == org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && e.getClickedInventory() != e.getInventory())
+            return flags.getFlagOwner(current);
+        return null;
     }
 
     private void trackFlagDeposit(InventoryClickEvent e, Team vault, Player p) {
