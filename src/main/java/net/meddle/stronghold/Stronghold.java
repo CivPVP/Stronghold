@@ -64,10 +64,10 @@ public final class Stronghold extends JavaPlugin {
         teamManager.loadAll();
         flagManager.loadAll();
         scoreboardManager.applyAll();
-        eventManager.resume();
 
         registerListeners();
         registerCommands();
+        eventManager.resume(); // after listeners so broadcasts/chunk-loads have full plugin context
         flagCarrierListener.startBroadcastTask(); // always-on: broadcasts whenever flags are held
 
         getLogger().info("Stronghold enabled.");
@@ -78,6 +78,7 @@ public final class Stronghold extends JavaPlugin {
         if (flagCarrierListener != null) flagCarrierListener.stopBroadcastTask();
         if (eventManager != null) eventManager.shutdown();
         if (bossBarManager != null) bossBarManager.removeAll();
+        if (flagManager != null) flagManager.saveAll(); // flush any pending async saves
         if (auditWriter != null) auditWriter.close();
         getLogger().info("Stronghold disabled.");
     }

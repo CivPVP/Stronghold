@@ -6,7 +6,6 @@ net\meddle\stronghold\event\EventManager.class
 net\meddle\stronghold\commands\SetFlagVaultCommand.class
 net\meddle\stronghold\Stronghold.class
 net\meddle\stronghold\bossbar\BossBarManager$1.class
-net\meddle\stronghold\listeners\VaultProtectionListener$1.class
 net\meddle\stronghold\commands\StrongholdCommand.class
 net\meddle\stronghold\gui\VaultsGui.class
 net\meddle\stronghold\bossbar\BossBarManager.class

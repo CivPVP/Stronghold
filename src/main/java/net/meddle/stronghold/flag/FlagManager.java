@@ -23,6 +23,8 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -77,21 +79,33 @@ public class FlagManager {
             }
         }
 
-        // After loading, validate HELD states: if holder is offline, convert to DROPPED at last known position
-        for (FlagRecord r : records.values()) {
-            if (r.getState() == FlagState.HELD) {
-                Player p = Bukkit.getPlayer(r.getHolderUUID());
-                if (p == null) {
-                    // Player is offline — flag drops at their last known dropped coords, or vault
-                    r.setInVault(r.getLastVaultTeam());
-                }
-            }
-        }
-
-        saveAll();
+        // Leave HELD records as-is for offline players — the physical item is still in their
+        // saved inventory. Mutating to IN_VAULT here would desync state vs. the actual item.
+        // Reconciliation happens on player join via PlayerSessionListener.
     }
 
+    /** Synchronous save — use only at shutdown or initial load. */
     public void saveAll() {
+        try { buildSnapshot().save(flagsFile); }
+        catch (IOException e) { plugin.getLogger().severe("Could not save flags.yml: " + e.getMessage()); }
+    }
+
+    /** Async atomic save — used on every state transition to avoid blocking the main thread. */
+    private void save(FlagRecord ignored) {
+        YamlConfiguration snapshot = buildSnapshot();
+        File tmp = new File(flagsFile.getParent(), "flags.tmp.yml");
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                snapshot.save(tmp);
+                Files.move(tmp.toPath(), flagsFile.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                plugin.getLogger().severe("Could not save flags.yml: " + e.getMessage());
+            }
+        });
+    }
+
+    private YamlConfiguration buildSnapshot() {
         YamlConfiguration c = new YamlConfiguration();
         for (FlagRecord r : records.values()) {
             String t = r.getOwnerTeam();
@@ -106,12 +120,7 @@ public class FlagManager {
             c.set(t + ".droppedEntityUUID", r.getDroppedEntityUUID() != null ? r.getDroppedEntityUUID().toString() : "");
             c.set(t + ".lastVaultTeam",     r.getLastVaultTeam());
         }
-        try { c.save(flagsFile); }
-        catch (IOException e) { plugin.getLogger().severe("Could not save flags.yml: " + e.getMessage()); }
-    }
-
-    private void save(FlagRecord r) {
-        saveAll();
+        return c;
     }
 
     // ── Flag creation ─────────────────────────────────────────────────────────
@@ -127,6 +136,7 @@ public class FlagManager {
             : UUID.randomUUID();
         meta.getPersistentDataContainer().set(KEY_UUID, PersistentDataType.STRING, uid.toString());
         meta.setUnbreakable(true);
+        meta.setMaxStackSize(1);
         item.setItemMeta(meta);
         return item;
     }
@@ -141,6 +151,7 @@ public class FlagManager {
         meta.getPersistentDataContainer().set(KEY_OWNER, PersistentDataType.STRING, team.getName());
         meta.getPersistentDataContainer().set(KEY_UUID,  PersistentDataType.STRING, uid.toString());
         meta.setUnbreakable(true);
+        meta.setMaxStackSize(1);
         item.setItemMeta(meta);
         return item;
     }
@@ -226,12 +237,12 @@ public class FlagManager {
     }
 
     /**
-     * Places the flag into its last vault without touching the physical item entity —
-     * callers must remove the item themselves before calling this.
+     * Removes the flag from wherever it currently is, then places it into its last vault.
      * Loads the chunk and recreates the barrel if missing.
      * Returns the vault Team on success, null if no vault could be found.
      */
     public Team placeInLastVault(String teamName) {
+        removeFlagFromWorld(teamName); // ensure no duplicate physical item exists
         FlagRecord r = records.get(teamName);
         if (r == null) return null;
 

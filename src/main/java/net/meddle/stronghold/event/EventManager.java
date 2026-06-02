@@ -60,7 +60,8 @@ public class EventManager {
             case COUNTDOWN -> {
                 long remaining = countdownEnd - now;
                 if (remaining <= 0) {
-                    deployFlags();
+                    // Expired while server was down — deploy on next tick so listeners are ready
+                    Bukkit.getScheduler().runTask(plugin, this::deployFlags);
                 } else {
                     schedulePhaseTask(remaining, this::deployFlags);
                     startBossbarTick();
@@ -69,7 +70,8 @@ public class EventManager {
             case ACTIVE -> {
                 long remaining = endgameEnd - now;
                 if (remaining <= 0) {
-                    endEvent();
+                    // Expired while server was down — end on next tick so listeners are ready
+                    Bukkit.getScheduler().runTask(plugin, this::endEvent);
                 } else {
                     schedulePhaseTask(remaining, this::endEvent);
                     startBossbarTick();
