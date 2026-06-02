@@ -15,6 +15,7 @@ import org.bukkit.event.block.BlockDropItemEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
@@ -59,7 +60,7 @@ public class VaultProtectionListener implements Listener {
             return;
         }
 
-        // Enemy → allowed; flag state will be handled by item drop naturally
+        // Enemy → allowed; flag state handled by BlockDropItemEvent
         flags.onVaultDestroyed(vault);
     }
 
@@ -68,7 +69,7 @@ public class VaultProtectionListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockDropItem(BlockDropItemEvent e) {
         Block b = e.getBlock();
-        // The barrel is already broken (AIR) here — skip the type check and look up by coords directly.
+        // Barrel is already AIR here — look up by coords directly
         Team vault = teams.getTeamByVault(b.getWorld().getName(), b.getX(), b.getY(), b.getZ());
         if (vault == null) return;
         for (org.bukkit.entity.Item item : e.getItems()) {
@@ -103,16 +104,28 @@ public class VaultProtectionListener implements Listener {
     public void onInventoryClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
 
+        // COLLECT_TO_CURSOR (double-click): block if it would sweep flags out of a vault
+        if (e.getAction() == InventoryAction.COLLECT_TO_CURSOR) {
+            if (isVaultInventory(e.getInventory()) && inventoryHasFlag(e.getInventory())) {
+                e.setCancelled(true);
+                return;
+            }
+        }
+
         ItemStack cursor  = e.getCursor();
         ItemStack current = e.getCurrentItem();
 
-        // 1. Prevent placing a flag into any non-vault container
+        // Prevent flags from being inserted into bundles
+        if (flags.isFlag(cursor) && current != null && current.getType() == Material.BUNDLE) {
+            e.setCancelled(true);
+            return;
+        }
+
+        // Prevent placing a flag into any non-vault container
         if (plugin.getCfg().isPreventFlagInNonVaultContainers()) {
-            if (flags.isFlag(cursor)) {
-                if (!isVaultInventory(e.getInventory())) {
-                    e.setCancelled(true);
-                    return;
-                }
+            if (flags.isFlag(cursor) && !isVaultInventory(e.getInventory())) {
+                e.setCancelled(true);
+                return;
             }
             if (flags.isFlag(current) && isShiftMoveToNonVault(e)) {
                 e.setCancelled(true);
@@ -120,22 +133,20 @@ public class VaultProtectionListener implements Listener {
             }
         }
 
-        // 2. Vault-specific rules
         Team vault = getVaultFromInventory(e.getInventory());
         if (vault == null) return;
 
         Team playerTeam = teams.getTeamOf(p.getUniqueId());
 
-        // Teamless players: deny all flag interactions
+        // Teamless: deny all flag interactions with the vault
         if (playerTeam == null) {
-            if (isRemovingFlag(e) || flags.isFlag(e.getCursor())
-                    || flags.isFlag(e.getCurrentItem())) {
+            if (isRemovingFlag(e) || isDepositingFlag(e, p)) {
                 e.setCancelled(true);
             }
             return;
         }
 
-        // Same team: deny removing flags, allow deposit (tracked)
+        // Same team: deny removal, allow and track deposit
         if (playerTeam.getName().equals(vault.getName())) {
             if (isRemovingFlag(e)) {
                 e.setCancelled(true);
@@ -145,21 +156,18 @@ public class VaultProtectionListener implements Listener {
             return;
         }
 
-        // Enemy team: allow all; track both removal and deposit
+        // Enemy team: track removal and deposit; block own flag into enemy vault
         if (isRemovingFlag(e)) {
-            ItemStack removed = current != null && flags.isFlag(current) ? current : cursor;
-            if (flags.isFlag(removed)) {
-                String owner = flags.getFlagOwner(removed);
-                if (owner != null) {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        flags.onFlagPickedUp(owner, p);
-                        plugin.getFlagCarrierListener().applyGlowForPlayer(p);
-                    });
-                }
+            // current is guaranteed non-null and a flag by isRemovingFlag
+            String owner = flags.getFlagOwner(current);
+            if (owner != null) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    flags.onFlagPickedUp(owner, p);
+                    plugin.getFlagCarrierListener().applyGlowForPlayer(p);
+                });
             }
         }
-        // Prevent depositing own team's flag into an enemy vault
-        String depositOwner = getDepositedFlagOwner(e);
+        String depositOwner = getDepositedFlagOwner(e, p);
         if (depositOwner != null && depositOwner.equals(playerTeam.getName())) {
             e.setCancelled(true);
             return;
@@ -169,10 +177,9 @@ public class VaultProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInventoryDrag(InventoryDragEvent e) {
-        if (!(e.getWhoClicked() instanceof Player)) return;
+        if (!(e.getWhoClicked() instanceof Player dragger)) return;
         if (!flags.isFlag(e.getOldCursor())) return;
 
-        // Dragging a flag into a non-vault inventory is blocked
         if (plugin.getCfg().isPreventFlagInNonVaultContainers() && !isVaultInventory(e.getInventory())) {
             e.setCancelled(true);
             return;
@@ -181,14 +188,12 @@ public class VaultProtectionListener implements Listener {
         Team vault = getVaultFromInventory(e.getInventory());
         if (vault == null) return;
 
-        Player dragger = (Player) e.getWhoClicked();
         if (teams.getTeamOf(dragger.getUniqueId()) == null) {
             e.setCancelled(true);
             return;
         }
         String owner = flags.getFlagOwner(e.getOldCursor());
         if (owner != null) {
-            // Prevent depositing own team's flag into an enemy vault
             Team dragTeam = teams.getTeamOf(dragger.getUniqueId());
             if (dragTeam != null && owner.equals(dragTeam.getName()) && !vault.getName().equals(dragTeam.getName())) {
                 e.setCancelled(true);
@@ -206,14 +211,10 @@ public class VaultProtectionListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInventoryMove(InventoryMoveItemEvent e) {
         if (!flags.isFlag(e.getItem())) return;
-
-        // Block hopper extraction from any vault
         if (getVaultFromInventory(e.getSource()) != null) {
             e.setCancelled(true);
             return;
         }
-
-        // Block hopper insertion into any non-vault container
         if (plugin.getCfg().isPreventFlagInNonVaultContainers()
                 && getVaultFromInventory(e.getDestination()) == null) {
             e.setCancelled(true);
@@ -237,61 +238,89 @@ public class VaultProtectionListener implements Listener {
         return getVaultFromInventory(inv) != null;
     }
 
+    /**
+     * Deny-by-default: any click on a vault slot that contains a flag is a removal.
+     * Covers PICKUP_*, HOTBAR_SWAP, SWAP_WITH_CURSOR, DROP_*_SLOT, MOVE_TO_OTHER_INVENTORY, etc.
+     */
     private boolean isRemovingFlag(InventoryClickEvent e) {
-        // Removing = taking an item FROM the vault inventory (clicked inv == the vault)
+        if (e.getClickedInventory() != e.getInventory()) return false;
         ItemStack current = e.getCurrentItem();
-        if (current != null && flags.isFlag(current)
+        return current != null && flags.isFlag(current);
+    }
+
+    /** True if a flag from the cursor, hotbar, or player inventory is heading into the vault. */
+    private boolean isDepositingFlag(InventoryClickEvent e, Player p) {
+        if (flags.isFlag(e.getCursor())) return true;
+        if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && e.getClickedInventory() != e.getInventory()
+                && flags.isFlag(e.getCurrentItem())) return true;
+        if (e.getAction() == InventoryAction.HOTBAR_SWAP
                 && e.getClickedInventory() == e.getInventory()) {
-            return switch (e.getAction()) {
-                case PICKUP_ALL, PICKUP_HALF, PICKUP_SOME, PICKUP_ONE,
-                     MOVE_TO_OTHER_INVENTORY, DROP_ALL_SLOT, DROP_ONE_SLOT -> true;
-                default -> false;
-            };
+            int slot = e.getHotbarButton();
+            if (slot >= 0) return flags.isFlag(p.getInventory().getItem(slot));
         }
         return false;
     }
 
-    private String getDepositedFlagOwner(InventoryClickEvent e) {
-        ItemStack cursor = e.getCursor();
-        if (flags.isFlag(cursor) && e.getClickedInventory() == e.getInventory())
-            return flags.getFlagOwner(cursor);
-        ItemStack current = e.getCurrentItem();
-        if (flags.isFlag(current)
-                && e.getAction() == org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY
-                && e.getClickedInventory() != e.getInventory())
-            return flags.getFlagOwner(current);
+    private String getDepositedFlagOwner(InventoryClickEvent e, Player p) {
+        if (flags.isFlag(e.getCursor()) && e.getClickedInventory() == e.getInventory())
+            return flags.getFlagOwner(e.getCursor());
+        if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && e.getClickedInventory() != e.getInventory()
+                && flags.isFlag(e.getCurrentItem()))
+            return flags.getFlagOwner(e.getCurrentItem());
+        if (e.getAction() == InventoryAction.HOTBAR_SWAP
+                && e.getClickedInventory() == e.getInventory()) {
+            int slot = e.getHotbarButton();
+            if (slot >= 0) {
+                ItemStack hotbar = p.getInventory().getItem(slot);
+                if (flags.isFlag(hotbar)) return flags.getFlagOwner(hotbar);
+            }
+        }
         return null;
     }
 
     private void trackFlagDeposit(InventoryClickEvent e, Team vault, Player p) {
-        ItemStack cursor  = e.getCursor();
-        ItemStack current = e.getCurrentItem();
-        // Cursor drag into vault slot
-        if (flags.isFlag(cursor) && e.getClickedInventory() == e.getInventory()) {
-            String owner = flags.getFlagOwner(cursor);
-            if (owner != null) {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    flags.onFlagStoredInVault(owner, vault.getName());
-                    plugin.getFlagCarrierListener().applyGlowForPlayer(p);
-                });
-            }
+        // Cursor click into vault slot
+        if (flags.isFlag(e.getCursor()) && e.getClickedInventory() == e.getInventory()) {
+            scheduleStoreInVault(flags.getFlagOwner(e.getCursor()), vault, p);
+            return;
         }
         // Shift-click from player inventory into vault
-        if (flags.isFlag(current)
-                && e.getAction() == org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY
-                && e.getClickedInventory() != e.getInventory()) {
-            String owner = flags.getFlagOwner(current);
-            if (owner != null) {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    flags.onFlagStoredInVault(owner, vault.getName());
-                    plugin.getFlagCarrierListener().applyGlowForPlayer(p);
-                });
+        if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && e.getClickedInventory() != e.getInventory()
+                && flags.isFlag(e.getCurrentItem())) {
+            scheduleStoreInVault(flags.getFlagOwner(e.getCurrentItem()), vault, p);
+            return;
+        }
+        // Hotbar-swap flag into vault slot
+        if (e.getAction() == InventoryAction.HOTBAR_SWAP
+                && e.getClickedInventory() == e.getInventory()) {
+            int slot = e.getHotbarButton();
+            if (slot >= 0) {
+                ItemStack hotbar = p.getInventory().getItem(slot);
+                if (flags.isFlag(hotbar)) scheduleStoreInVault(flags.getFlagOwner(hotbar), vault, p);
             }
         }
     }
 
+    private void scheduleStoreInVault(String owner, Team vault, Player p) {
+        if (owner == null) return;
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            flags.onFlagStoredInVault(owner, vault.getName());
+            plugin.getFlagCarrierListener().applyGlowForPlayer(p);
+        });
+    }
+
+    private boolean inventoryHasFlag(org.bukkit.inventory.Inventory inv) {
+        for (ItemStack item : inv.getContents()) {
+            if (flags.isFlag(item)) return true;
+        }
+        return false;
+    }
+
     private boolean isShiftMoveToNonVault(InventoryClickEvent e) {
-        return e.getAction() == org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY
+        return e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
             && e.getClickedInventory() != null
             && e.getClickedInventory() != e.getInventory()
             && !isVaultInventory(e.getInventory());
