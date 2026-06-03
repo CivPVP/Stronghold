@@ -34,7 +34,7 @@ public class FlagDespawnListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemove(EntityRemoveEvent e) {
-        if (!(e.getEntity() instanceof Item)) return;
+        if (!(e.getEntity() instanceof Item item)) return;
 
         switch (e.getCause()) {
             case UNLOAD  -> { return; }
@@ -44,7 +44,15 @@ public class FlagDespawnListener implements Listener {
             default      -> {}
         }
 
-        UUID entityId = e.getEntity().getUniqueId();
+        // Tie-breaking flag: return it to a vault
+        if (plugin.getTieBreakManager().isTieBreakFlag(item.getItemStack())) {
+            plugin.getServer().getScheduler().runTask(plugin,
+                () -> plugin.getTieBreakManager().returnFlagToVault());
+            return;
+        }
+
+        // Regular flag: UUID-based lookup
+        UUID entityId = item.getUniqueId();
         FlagRecord matched = null;
         for (FlagRecord r : flags.getAllRecords()) {
             if (r.getState() == FlagState.DROPPED && entityId.equals(r.getDroppedEntityUUID())) {
@@ -69,6 +77,14 @@ public class FlagDespawnListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onItemDespawn(ItemDespawnEvent e) {
         Item item = e.getEntity();
+
+        if (plugin.getTieBreakManager().isTieBreakFlag(item.getItemStack())) {
+            e.setCancelled(true);
+            plugin.getTieBreakManager().returnFlagToVault();
+            item.remove();
+            return;
+        }
+
         if (!flags.isFlag(item.getItemStack())) return;
 
         e.setCancelled(true);
@@ -92,6 +108,19 @@ public class FlagDespawnListener implements Listener {
      */
     private void startOrphanCheck() {
         Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+
+            // Tie-breaking flags below Y=0 → return to vault
+            for (World world : Bukkit.getWorlds()) {
+                for (Entity entity : world.getEntities()) {
+                    if (entity instanceof Item item
+                            && plugin.getTieBreakManager().isTieBreakFlag(item.getItemStack())
+                            && item.getLocation().getY() < 0) {
+                        entity.remove();
+                        plugin.getTieBreakManager().returnFlagToVault();
+                    }
+                }
+            }
+
             for (FlagRecord r : flags.getAllRecords()) {
                 if (r.getState() != FlagState.DROPPED) continue;
                 if (r.getDroppedEntityUUID() == null) continue;

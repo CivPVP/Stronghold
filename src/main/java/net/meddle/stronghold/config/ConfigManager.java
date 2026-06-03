@@ -65,9 +65,14 @@ public class ConfigManager {
 
     // ── Event ─────────────────────────────────────────────────────────────────
 
-    public String getDefaultCountdownDuration()  { return cfg.getString("event.default_countdown_duration", "1d"); }
-    public String getDefaultEndgameDuration()    { return cfg.getString("event.default_endgame_duration", "2d"); }
-    public boolean isCarrierEffectsActiveOnly()  { return cfg.getBoolean("event.carrier_effects_active_phase_only", true); }
+    public String getDefaultCountdownDuration()         { return cfg.getString("event.default_countdown_duration", "1d"); }
+    public String getDefaultEndgameDuration()           { return cfg.getString("event.default_endgame_duration", "2d"); }
+    public String getDefaultTiebreakCountdownDuration() { return cfg.getString("event.default_tiebreak_countdown_duration", "10m"); }
+    public String getDefaultTiebreakActiveDuration()    { return cfg.getString("event.default_tiebreak_active_duration", "30m"); }
+    public boolean isCarrierEffectsActiveOnly()         { return cfg.getBoolean("event.carrier_effects_active_phase_only", true); }
+
+    public String getBossbarTiebreakCountdownTitle() { return color(cfg.getString("bossbar.tiebreak_countdown_title", "&fTie-break starts in: &b{time}")); }
+    public String getBossbarTiebreakActiveTitle()    { return color(cfg.getString("bossbar.tiebreak_active_title",    "&fTie-break ends in: &b{time}")); }
 
     // ── Protection ────────────────────────────────────────────────────────────
 

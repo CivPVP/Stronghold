@@ -42,7 +42,8 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
         "setvault", "giveflag", "returnflag", "resetflag",
         "start", "pause", "resume", "stop", "reset",
         "status", "inspect", "tpvault", "listteams",
-        "backup", "restore", "repair", "reload"
+        "backup", "restore", "repair", "reload",
+        "addtbvault", "removetbvault", "listtbvaults"
     );
 
     private static final List<String> DYE_COLORS = Arrays.stream(DyeColor.values())
@@ -89,8 +90,11 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
             case "listteams"   -> cmdListTeams(sender);
             case "backup"      -> cmdBackup(sender);
             case "restore"     -> cmdRestore(sender, args);
-            case "repair"      -> cmdRepair(sender);
-            case "reload"      -> cmdReload(sender);
+            case "repair"         -> cmdRepair(sender);
+            case "reload"         -> cmdReload(sender);
+            case "addtbvault"     -> cmdAddTbVault(sender);
+            case "removetbvault"  -> cmdRemoveTbVault(sender, args);
+            case "listtbvaults"   -> cmdListTbVaults(sender);
             default            -> sendHelp(sender);
         }
         return true;
@@ -572,6 +576,46 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
         plugin.getFlagCarrierListener().reapplyAllGlow();
         s.sendMessage(plugin.getCfg().msg("reloaded"));
         plugin.audit(s.getName(), "Reloaded configuration");
+    }
+
+    // ── Tie-break vault commands ──────────────────────────────────────────────
+
+    private void cmdAddTbVault(CommandSender s) {
+        if (!(s instanceof Player p)) { s.sendMessage("§cOnly players can use this command."); return; }
+        EventPhase phase = plugin.getEventManager().getPhase();
+        if (phase == EventPhase.TIE_BREAK_ACTIVE || phase == EventPhase.ENDED) {
+            s.sendMessage("§cTie-breaking flags are already deployed. Vaults can only be added before the tie-break active phase.");
+            return;
+        }
+        Block target = p.getTargetBlockExact(5);
+        if (target == null || target.getType() != Material.BARREL) {
+            s.sendMessage(plugin.getCfg().msg("vault_not_barrel")); return;
+        }
+        plugin.getTieBreakManager().addVault(target.getLocation());
+        s.sendMessage("§bTie-breaker vault added at " + target.getX() + ", " + target.getY() + ", " + target.getZ() + ".");
+        plugin.audit(s.getName(), "Added tie-break vault at " + target.getLocation());
+    }
+
+    private void cmdRemoveTbVault(CommandSender s, String[] args) {
+        if (args.length < 2) { s.sendMessage("§cUsage: /stronghold removetbvault <index>"); return; }
+        int idx;
+        try { idx = Integer.parseInt(args[1]) - 1; } // 1-based for players
+        catch (NumberFormatException e) { s.sendMessage("§cInvalid index."); return; }
+        if (!plugin.getTieBreakManager().removeVault(idx)) {
+            s.sendMessage("§cNo vault at that index."); return;
+        }
+        s.sendMessage("§cTie-breaker vault removed.");
+        plugin.audit(s.getName(), "Removed tie-break vault #" + (idx + 1));
+    }
+
+    private void cmdListTbVaults(CommandSender s) {
+        var vaults = plugin.getTieBreakManager().getVaults();
+        if (vaults.isEmpty()) { s.sendMessage("§cNo tie-breaker vaults configured."); return; }
+        s.sendMessage("§bTie-breaker vaults (" + vaults.size() + "):");
+        for (int i = 0; i < vaults.size(); i++) {
+            var v = vaults.get(i);
+            s.sendMessage("  §f" + (i + 1) + ". §7" + v.display());
+        }
     }
 
     // ── Tab completion ────────────────────────────────────────────────────────

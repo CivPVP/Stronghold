@@ -5,5 +5,7 @@ public enum EventPhase {
     COUNTDOWN,
     PAUSED,
     ACTIVE,
+    TIE_BREAK_COUNTDOWN,
+    TIE_BREAK_ACTIVE,
     ENDED
 }

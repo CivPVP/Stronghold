@@ -12,6 +12,8 @@ bossbar:
   countdown_title: "&fFlag deployment in: &b{time}"
   active_title: "&fEvent ends in: &b{time}"
   paused_title: "&7[PAUSED] &f— &b{time} &fremaining"
+  tiebreak_countdown_title: "&fTie-break starts in: &b{time}"
+  tiebreak_active_title: "&fTie-break ends in: &b{time}"
   color: BLUE
   style: SOLID
 
@@ -25,6 +27,8 @@ glow:
 event:
   default_countdown_duration: "1d"
   default_endgame_duration: "2d"
+  default_tiebreak_countdown_duration: "10m"
+  default_tiebreak_active_duration: "30m"
   carrier_effects_active_phase_only: true
 
 protection:

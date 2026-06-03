@@ -40,6 +40,13 @@ public class FlagItemListener implements Listener {
     public void onPickup(EntityPickupItemEvent e) {
         if (!(e.getEntity() instanceof Player p)) return;
         ItemStack item = e.getItem().getItemStack();
+
+        // Tie-breaking flag: only players from tied teams may pick it up
+        if (plugin.getTieBreakManager().isTieBreakFlag(item)) {
+            if (!plugin.getTieBreakManager().isFromTiedTeam(p)) e.setCancelled(true);
+            return;
+        }
+
         if (!flags.isFlag(item)) return;
 
         if (flags.isDuplicate(item)) {
@@ -146,7 +153,8 @@ public class FlagItemListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onItemDamage(EntityDamageEvent e) {
         if (!(e.getEntity() instanceof Item item)) return;
-        if (!flags.isFlag(item.getItemStack())) return;
+        boolean isTb = plugin.getTieBreakManager().isTieBreakFlag(item.getItemStack());
+        if (!isTb && !flags.isFlag(item.getItemStack())) return;
         // VOID and KILL let the entity die so the orphan check can recover it.
         // Everything else (fire, lava, cactus, explosions…) is cancelled.
         // KILL: let the entity die so EntityRemoveEvent(DEATH) fires and the UUID lookup returns the flag.

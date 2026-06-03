@@ -18,6 +18,7 @@ import net.meddle.stronghold.listeners.PlayerSessionListener;
 import net.meddle.stronghold.listeners.VaultProtectionListener;
 import net.meddle.stronghold.scoreboard.TeamScoreboardManager;
 import net.meddle.stronghold.team.TeamManager;
+import net.meddle.stronghold.tiebreak.TieBreakManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -40,6 +41,7 @@ public final class Stronghold extends JavaPlugin {
     private FlagsGui flagsGui;
     private VaultsGui vaultsGui;
     private FlagCarrierListener flagCarrierListener;
+    private TieBreakManager tieBreakManager;
 
     private PrintWriter auditWriter;
     private static final DateTimeFormatter AUDIT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -52,6 +54,7 @@ public final class Stronghold extends JavaPlugin {
         configManager        = new ConfigManager(this);
         teamManager          = new TeamManager(this);
         flagManager          = new FlagManager(this);
+        tieBreakManager      = new TieBreakManager(this);
         scoreboardManager    = new TeamScoreboardManager(this);
         bossBarManager       = new BossBarManager(this);
         flagCarrierListener  = new FlagCarrierListener(this);
@@ -63,6 +66,7 @@ public final class Stronghold extends JavaPlugin {
 
         teamManager.loadAll();
         flagManager.loadAll();
+        tieBreakManager.loadVaults();
         scoreboardManager.applyAll();
 
         registerListeners();
@@ -144,4 +148,5 @@ public final class Stronghold extends JavaPlugin {
     public FlagsGui               getFlagsGui()          { return flagsGui; }
     public VaultsGui              getVaultsGui()         { return vaultsGui; }
     public FlagCarrierListener    getFlagCarrierListener(){ return flagCarrierListener; }
+    public TieBreakManager        getTieBreakManager()    { return tieBreakManager; }
 }

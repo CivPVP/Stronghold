@@ -41,6 +41,15 @@ public class VaultProtectionListener implements Listener {
         Block b = e.getBlock();
         if (b.getType() != Material.BARREL) return;
 
+        // Protect tie-breaking vaults — only ops may break them
+        if (plugin.getTieBreakManager().isVaultBlock(b)) {
+            if (!e.getPlayer().isOp()) {
+                e.setCancelled(true);
+                e.getPlayer().sendMessage(plugin.getCfg().msg("not_op"));
+            }
+            return;
+        }
+
         Team vault = getVaultTeam(b);
         if (vault == null) return;
 
@@ -83,12 +92,14 @@ public class VaultProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent e) {
-        e.blockList().removeIf(b -> b.getType() == Material.BARREL && getVaultTeam(b) != null);
+        e.blockList().removeIf(b -> b.getType() == Material.BARREL
+            && (getVaultTeam(b) != null || plugin.getTieBreakManager().isVaultBlock(b)));
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent e) {
-        e.blockList().removeIf(b -> b.getType() == Material.BARREL && getVaultTeam(b) != null);
+        e.blockList().removeIf(b -> b.getType() == Material.BARREL
+            && (getVaultTeam(b) != null || plugin.getTieBreakManager().isVaultBlock(b)));
     }
 
     // ── Block place ───────────────────────────────────────────────────────────
@@ -119,6 +130,33 @@ public class VaultProtectionListener implements Listener {
         if (flags.isFlag(cursor) && current != null && current.getType() == Material.BUNDLE) {
             e.setCancelled(true);
             return;
+        }
+
+        // Tie-breaking flags may only be placed in the player's own team vault (not enemy vaults, chests, etc.)
+        var tbm = plugin.getTieBreakManager();
+        if (tbm.isTieBreakFlag(cursor)
+                && e.getClickedInventory() != null
+                && !e.getClickedInventory().equals(p.getInventory())) {
+            if (!isOwnTeamVault(e.getInventory(), p)) {
+                e.setCancelled(true);
+                return;
+            }
+        }
+        if (tbm.isTieBreakFlag(current)
+                && e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && e.getClickedInventory() != null
+                && e.getClickedInventory().equals(p.getInventory())) {
+            if (!isOwnTeamVault(e.getInventory(), p)) {
+                e.setCancelled(true);
+                return;
+            }
+        }
+        // Only tied-team players may interact with tie-breaking flags sitting in any vault
+        if (tbm.isTieBreakFlag(current) && getVaultFromInventory(e.getInventory()) != null) {
+            if (!tbm.isFromTiedTeam(p)) {
+                e.setCancelled(true);
+                return;
+            }
         }
 
         // Prevent placing a flag into any non-vault container
@@ -317,6 +355,13 @@ public class VaultProtectionListener implements Listener {
             if (flags.isFlag(item)) return true;
         }
         return false;
+    }
+
+    private boolean isOwnTeamVault(org.bukkit.inventory.Inventory inv, Player p) {
+        Team vault = getVaultFromInventory(inv);
+        if (vault == null) return false;
+        Team playerTeam = teams.getTeamOf(p.getUniqueId());
+        return playerTeam != null && playerTeam.getName().equals(vault.getName());
     }
 
     private boolean isShiftMoveToNonVault(InventoryClickEvent e) {
