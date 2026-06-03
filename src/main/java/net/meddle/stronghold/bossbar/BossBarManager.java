@@ -68,6 +68,22 @@ public class BossBarManager {
                 title = plugin.getCfg().getBossbarActiveTitle()
                     .replace("{time}", ConfigManager.formatDuration(remaining));
             }
+            case TIE_BREAK_COUNTDOWN -> {
+                long end       = plugin.getEventManager().getTiebreakCountdownEnd();
+                long remaining = Math.max(0, end - now);
+                long total     = plugin.getEventManager().getTiebreakCountdownDurationMs();
+                progress = total <= 0 ? 0f : (float) remaining / total;
+                title = plugin.getCfg().getBossbarTiebreakCountdownTitle()
+                    .replace("{time}", ConfigManager.formatDuration(remaining));
+            }
+            case TIE_BREAK_ACTIVE -> {
+                long end       = plugin.getEventManager().getTiebreakActiveEnd();
+                long remaining = Math.max(0, end - now);
+                long total     = plugin.getEventManager().getTiebreakActiveDurationMs();
+                progress = total <= 0 ? 0f : (float) remaining / total;
+                title = plugin.getCfg().getBossbarTiebreakActiveTitle()
+                    .replace("{time}", ConfigManager.formatDuration(remaining));
+            }
             default -> { return; }
         }
 
