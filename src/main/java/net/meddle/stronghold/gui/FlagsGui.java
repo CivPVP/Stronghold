@@ -5,9 +5,13 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.meddle.stronghold.Stronghold;
 import net.meddle.stronghold.flag.FlagRecord;
 import net.meddle.stronghold.team.Team;
+import net.meddle.stronghold.tiebreak.TieBreakManager;
 import org.bukkit.Bukkit;
+import org.bukkit.DyeColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.banner.Pattern;
+import org.bukkit.block.banner.PatternType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -18,6 +22,8 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public class FlagsGui implements Listener {
 
@@ -48,6 +54,17 @@ public class FlagsGui implements Listener {
             inv.setItem(slot, buildIcon(team, plugin.getFlagManager().getRecord(team.getName())));
             slot++;
             if ((slot + 1) % 9 == 0) slot += 2; // skip border columns
+        }
+
+        // Tie-breaking flags — row 5 inner slots (46-52), one per deployed flag
+        var tbRecords = plugin.getTieBreakManager().getAllTBRecords();
+        if (!tbRecords.isEmpty()) {
+            int tbSlot = 46;
+            for (Map.Entry<UUID, TieBreakManager.TBRecord> entry : tbRecords.entrySet()) {
+                if (tbSlot > 52) break;
+                inv.setItem(tbSlot, buildTBIcon(entry.getKey(), entry.getValue()));
+                tbSlot++;
+            }
         }
 
         p.openInventory(inv);
@@ -97,6 +114,50 @@ public class FlagsGui implements Listener {
         for (String line : lore) loreComponents.add(amp(line));
         meta.lore(loreComponents);
 
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack buildTBIcon(UUID flagId, TieBreakManager.TBRecord r) {
+        ItemStack item = new ItemStack(Material.WHITE_BANNER);
+        var meta = (org.bukkit.inventory.meta.BannerMeta) item.getItemMeta();
+        meta.displayName(Component.text("Tie-Breaking Flag")
+            .color(net.meddle.stronghold.Msg.LIGHT_BLUE)
+            .decorate(net.kyori.adventure.text.format.TextDecoration.BOLD));
+        meta.addPattern(new Pattern(DyeColor.LIGHT_BLUE, PatternType.HALF_HORIZONTAL_BOTTOM));
+
+        List<String> lore = new ArrayList<>();
+        switch (r.state) {
+            case IN_VAULT -> lore.add("&7Status: &aIn vault");
+            case HELD -> {
+                lore.add("&7Status: &eHeld by player");
+                String carrier = r.holderName != null ? r.holderName : "Unknown";
+                Player online = r.holderUUID != null ? Bukkit.getPlayer(r.holderUUID) : null;
+                if (online != null) {
+                    var loc = online.getLocation();
+                    lore.add("&7Carrier: &f" + carrier);
+                    lore.add("&7Location: &f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ()
+                        + " (" + loc.getWorld().getName() + ")");
+                } else {
+                    lore.add("&7Carrier: &f" + carrier);
+                }
+            }
+            case DROPPED -> {
+                lore.add("&7Status: &cDropped in world");
+                Location loc = plugin.getTieBreakManager().getTBDroppedLocation(flagId);
+                if (loc != null) {
+                    lore.add("&7Location: &f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ()
+                        + " (" + loc.getWorld().getName() + ")");
+                } else {
+                    lore.add("&7Location: &funknown");
+                }
+            }
+        }
+
+        List<Component> loreComponents = new ArrayList<>();
+        loreComponents.add(Component.empty());
+        for (String line : lore) loreComponents.add(amp(line));
+        meta.lore(loreComponents);
         item.setItemMeta(meta);
         return item;
     }

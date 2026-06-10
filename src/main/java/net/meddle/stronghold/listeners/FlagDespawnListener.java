@@ -44,8 +44,10 @@ public class FlagDespawnListener implements Listener {
             default      -> {}
         }
 
-        // Tie-breaking flag: return it to a vault
+        // Tie-breaking flag: remove stale record then return a fresh flag to a vault
         if (plugin.getTieBreakManager().isTieBreakFlag(item.getItemStack())) {
+            UUID entityId = item.getUniqueId();
+            plugin.getTieBreakManager().removeTBRecord(entityId);
             plugin.getServer().getScheduler().runTask(plugin,
                 () -> plugin.getTieBreakManager().returnFlagToVault());
             return;

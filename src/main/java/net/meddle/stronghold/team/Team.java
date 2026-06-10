@@ -4,7 +4,10 @@ import org.bukkit.DyeColor;
 import org.bukkit.Location;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class Team {
@@ -13,6 +16,7 @@ public class Team {
     private DyeColor color;
     private UUID captain;
     private final List<UUID> members = new ArrayList<>();
+    private final Map<UUID, String> memberNames = new HashMap<>();
 
     private String vaultWorld;
     private int vaultX, vaultY, vaultZ;
@@ -45,8 +49,13 @@ public class Team {
     public void addMember(UUID uuid)        { if (!members.contains(uuid)) members.add(uuid); }
     public void removeMember(UUID uuid)     {
         members.remove(uuid);
+        memberNames.remove(uuid);
         if (uuid.equals(captain)) captain = null;
     }
+
+    public void   setMemberName(UUID uuid, String name) { if (name != null) memberNames.put(uuid, name); }
+    public String getMemberName(UUID uuid)               { return memberNames.get(uuid); }
+    public Map<UUID, String> getMemberNames()            { return Collections.unmodifiableMap(memberNames); }
 
     // ── Vault ─────────────────────────────────────────────────────────────────
 

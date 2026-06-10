@@ -5,6 +5,8 @@ import net.meddle.stronghold.Msg;
 import net.meddle.stronghold.Stronghold;
 import net.meddle.stronghold.flag.FlagRecord;
 import net.meddle.stronghold.team.Team;
+import net.meddle.stronghold.tiebreak.TieBreakManager;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
@@ -26,7 +28,50 @@ public class FlagCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length < 1) {
-            sender.sendMessage("Usage: /flag <team>");
+            sender.sendMessage("Usage: /flag <team|tiebreak>");
+            return true;
+        }
+
+        // Special case: show all tie-breaking flag locations
+        if (args[0].equalsIgnoreCase("tiebreak")) {
+            var records = plugin.getTieBreakManager().getAllTBRecords();
+            if (records.isEmpty()) {
+                sender.sendMessage(Component.text("No tie-breaking flags are currently deployed.", Msg.LIGHT_BLUE));
+                return true;
+            }
+            int i = 1;
+            for (var entry : records.entrySet()) {
+                TieBreakManager.TBRecord r = entry.getValue();
+                Component tbLabel = Component.text("Tie-Breaking Flag #" + i + " — ", Msg.LIGHT_BLUE)
+                    .decorate(TextDecoration.BOLD);
+                Component detail = switch (r.state) {
+                    case IN_VAULT -> Component.text("in vault", Msg.LIGHT_BLUE);
+                    case HELD -> {
+                        Player carrier = r.holderUUID != null ? Bukkit.getPlayer(r.holderUUID) : null;
+                        String name = carrier != null ? carrier.getName()
+                            : (r.holderName != null ? r.holderName : "Unknown");
+                        if (carrier != null) {
+                            var loc = carrier.getLocation();
+                            yield Component.text("carried by ", Msg.LIGHT_BLUE)
+                                .append(Component.text(name, Msg.WHITE))
+                                .append(Component.text(" at " + loc.getBlockX() + ", " + loc.getBlockY()
+                                    + ", " + loc.getBlockZ() + " (" + loc.getWorld().getName() + ")", Msg.LIGHT_BLUE));
+                        } else {
+                            yield Component.text("last seen carried by ", Msg.LIGHT_BLUE)
+                                .append(Component.text(name + " (offline)", Msg.WHITE));
+                        }
+                    }
+                    case DROPPED -> {
+                        Location loc = plugin.getTieBreakManager().getTBDroppedLocation(entry.getKey());
+                        yield loc != null
+                            ? Component.text("dropped at " + loc.getBlockX() + ", " + loc.getBlockY()
+                                + ", " + loc.getBlockZ() + " (" + loc.getWorld().getName() + ")", Msg.LIGHT_BLUE)
+                            : Component.text("dropped — location unknown", Msg.LIGHT_BLUE);
+                    }
+                };
+                sender.sendMessage(tbLabel.append(detail));
+                i++;
+            }
             return true;
         }
 
@@ -96,10 +141,10 @@ public class FlagCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 1) {
-            return plugin.getTeamManager().getAllTeams().stream()
-                .map(Team::getName)
-                .filter(n -> n.toLowerCase().startsWith(args[0].toLowerCase()))
-                .toList();
+            var names = new java.util.ArrayList<String>();
+            names.add("tiebreak");
+            plugin.getTeamManager().getAllTeams().stream().map(Team::getName).forEach(names::add);
+            return names.stream().filter(n -> n.toLowerCase().startsWith(args[0].toLowerCase())).toList();
         }
         return List.of();
     }

@@ -1,11 +1,15 @@
 package net.meddle.stronghold.listeners;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.meddle.stronghold.Msg;
 import net.meddle.stronghold.Stronghold;
 import net.meddle.stronghold.flag.FlagManager;
 import net.meddle.stronghold.team.Team;
 import net.meddle.stronghold.team.TeamManager;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import java.util.UUID;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -78,13 +82,21 @@ public class VaultProtectionListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockDropItem(BlockDropItemEvent e) {
         Block b = e.getBlock();
-        // Barrel is already AIR here — look up by coords directly
+        // Barrel is already AIR — look up by coords directly for both vault types
         Team vault = teams.getTeamByVault(b.getWorld().getName(), b.getX(), b.getY(), b.getZ());
-        if (vault == null) return;
+        boolean isTBVault = plugin.getTieBreakManager().isVaultBlock(b);
+        if (vault == null && !isTBVault) return;
+        var tbm = plugin.getTieBreakManager();
         for (org.bukkit.entity.Item item : e.getItems()) {
             String owner = flags.getFlagOwner(item.getItemStack());
-            if (owner == null) continue;
-            flags.onFlagDropped(owner, item.getLocation(), item.getUniqueId());
+            if (owner != null) {
+                flags.onFlagDropped(owner, item.getLocation(), item.getUniqueId());
+                continue;
+            }
+            if (tbm.isTieBreakFlag(item.getItemStack())) {
+                UUID tbId = tbm.getTBFlagUUID(item.getItemStack());
+                if (tbId != null) tbm.onTBDropped(tbId, item.getLocation(), item.getUniqueId());
+            }
         }
     }
 
@@ -106,7 +118,7 @@ public class VaultProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent e) {
-        if (flags.isFlag(e.getItemInHand())) e.setCancelled(true);
+        if (isAnyFlag(e.getItemInHand())) e.setCancelled(true);
     }
 
     // ── Inventory interactions ────────────────────────────────────────────────
@@ -115,9 +127,9 @@ public class VaultProtectionListener implements Listener {
     public void onInventoryClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
 
-        // COLLECT_TO_CURSOR (double-click): block if it would sweep flags out of a vault
+        // COLLECT_TO_CURSOR (double-click): block if it would sweep any flag out of a vault
         if (e.getAction() == InventoryAction.COLLECT_TO_CURSOR) {
-            if (isVaultInventory(e.getInventory()) && inventoryHasFlag(e.getInventory())) {
+            if (isVaultInventory(e.getInventory()) && inventoryHasAnyFlag(e.getInventory())) {
                 e.setCancelled(true);
                 return;
             }
@@ -126,14 +138,16 @@ public class VaultProtectionListener implements Listener {
         ItemStack cursor  = e.getCursor();
         ItemStack current = e.getCurrentItem();
 
-        // Prevent flags from being inserted into bundles
-        if (flags.isFlag(cursor) && current != null && current.getType() == Material.BUNDLE) {
+        // Prevent any flag from being inserted into a bundle
+        if (isAnyFlag(cursor) && current != null && current.getType() == Material.BUNDLE) {
             e.setCancelled(true);
             return;
         }
 
-        // Tie-breaking flags may only be placed in the player's own team vault (not enemy vaults, chests, etc.)
         var tbm = plugin.getTieBreakManager();
+
+        // ── Tie-breaking flag deposit restrictions ────────────────────────────
+        // TB flags may only be placed in the player's own team vault.
         if (tbm.isTieBreakFlag(cursor)
                 && e.getClickedInventory() != null
                 && !e.getClickedInventory().equals(p.getInventory())) {
@@ -142,24 +156,55 @@ public class VaultProtectionListener implements Listener {
                 return;
             }
         }
-        if (tbm.isTieBreakFlag(current)
-                && e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+        if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
                 && e.getClickedInventory() != null
-                && e.getClickedInventory().equals(p.getInventory())) {
+                && e.getClickedInventory().equals(p.getInventory())
+                && tbm.isTieBreakFlag(current)) {
             if (!isOwnTeamVault(e.getInventory(), p)) {
                 e.setCancelled(true);
                 return;
             }
         }
-        // Only tied-team players may interact with tie-breaking flags sitting in any vault
-        if (tbm.isTieBreakFlag(current) && getVaultFromInventory(e.getInventory()) != null) {
-            if (!tbm.isFromTiedTeam(p)) {
-                e.setCancelled(true);
-                return;
+
+        // ── Tie-breaking flag inside any vault (team OR tie-break vault) ──────
+        // Unified: access control + removal tracking. Covers both vault types.
+        if (tbm.isTieBreakFlag(current)) {
+            boolean inTeamVault = getVaultFromInventory(e.getInventory()) != null;
+            boolean inTBVault   = isTBVaultInventory(e.getInventory());
+            if (inTeamVault || inTBVault) {
+                if (!tbm.isFromTiedTeam(p)) {
+                    e.setCancelled(true);
+                    return;
+                }
+                // Own team cannot retrieve a secured TB flag from their vault
+                if (inTeamVault && isOwnTeamVault(e.getInventory(), p)
+                        && e.getClickedInventory() == e.getInventory()) {
+                    e.setCancelled(true);
+                    return;
+                }
+                // Removal: player clicked on the vault side — track and broadcast
+                if (e.getClickedInventory() == e.getInventory()) {
+                    UUID tbFlagId = tbm.getTBFlagUUID(current);
+                    if (tbFlagId != null) {
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            tbm.onTBPickedUp(tbFlagId, p);
+                            plugin.getFlagCarrierListener().applyGlowForPlayer(p);
+                        });
+                        Msg.broadcast(
+                            Component.text(p.getName(), Msg.WHITE)
+                                .append(Component.text(" picked up the ", Msg.LIGHT_BLUE))
+                                .append(Component.text("Tie-Breaking Flag", Msg.WHITE)
+                                    .decorate(TextDecoration.BOLD))
+                                .append(Component.text("!", Msg.LIGHT_BLUE)));
+                    }
+                    return;
+                }
+                // Deposit (shift-click from player-inventory side): fall through so the
+                // same-team block and trackTBFlagDeposit can register the IN_VAULT state.
             }
         }
 
-        // Prevent placing a flag into any non-vault container
+        // Prevent placing a regular flag into any non-vault container
         if (plugin.getCfg().isPreventFlagInNonVaultContainers()) {
             if (flags.isFlag(cursor) && !isVaultInventory(e.getInventory())) {
                 e.setCancelled(true);
@@ -184,25 +229,33 @@ public class VaultProtectionListener implements Listener {
             return;
         }
 
-        // Same team: deny removal, allow and track deposit
+        // Same team: deny regular-flag removal, allow and track deposit of both flag types
         if (playerTeam.getName().equals(vault.getName())) {
             if (isRemovingFlag(e)) {
                 e.setCancelled(true);
                 return;
             }
             trackFlagDeposit(e, vault, p);
+            trackTBFlagDeposit(e, vault, p);
             return;
         }
 
-        // Enemy team: track removal and deposit; block own flag into enemy vault
+        // Enemy team: track regular-flag removal and deposit; block own flag into enemy vault
         if (isRemovingFlag(e)) {
-            // current is guaranteed non-null and a flag by isRemovingFlag
             String owner = flags.getFlagOwner(current);
             if (owner != null) {
+                Team ownerTeam = teams.getTeam(owner);
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     flags.onFlagPickedUp(owner, p);
                     plugin.getFlagCarrierListener().applyGlowForPlayer(p);
                 });
+                Msg.broadcast(
+                    Component.text(p.getName(), Msg.WHITE)
+                        .append(Component.text(" took ", Msg.LIGHT_BLUE))
+                        .append(ownerTeam != null ? Msg.teamName(ownerTeam) : Component.text(owner, Msg.LIGHT_BLUE))
+                        .append(Component.text("'s Flag from ", Msg.LIGHT_BLUE))
+                        .append(Msg.teamName(vault))
+                        .append(Component.text("'s vault!", Msg.LIGHT_BLUE)));
             }
         }
         String depositOwner = getDepositedFlagOwner(e, p);
@@ -216,7 +269,25 @@ public class VaultProtectionListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInventoryDrag(InventoryDragEvent e) {
         if (!(e.getWhoClicked() instanceof Player dragger)) return;
-        if (!flags.isFlag(e.getOldCursor())) return;
+        ItemStack dragged = e.getOldCursor();
+
+        // TB flag drag: only allowed into own team vault
+        if (plugin.getTieBreakManager().isTieBreakFlag(dragged)) {
+            if (!isOwnTeamVault(e.getInventory(), dragger)) {
+                e.setCancelled(true);
+                return;
+            }
+            UUID flagId = plugin.getTieBreakManager().getTBFlagUUID(dragged);
+            if (flagId != null) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    plugin.getTieBreakManager().onTBInVault(flagId);
+                    plugin.getFlagCarrierListener().applyGlowForPlayer(dragger);
+                });
+            }
+            return;
+        }
+
+        if (!flags.isFlag(dragged)) return;
 
         if (plugin.getCfg().isPreventFlagInNonVaultContainers() && !isVaultInventory(e.getInventory())) {
             e.setCancelled(true);
@@ -230,7 +301,7 @@ public class VaultProtectionListener implements Listener {
             e.setCancelled(true);
             return;
         }
-        String owner = flags.getFlagOwner(e.getOldCursor());
+        String owner = flags.getFlagOwner(dragged);
         if (owner != null) {
             Team dragTeam = teams.getTeamOf(dragger.getUniqueId());
             if (dragTeam != null && owner.equals(dragTeam.getName()) && !vault.getName().equals(dragTeam.getName())) {
@@ -248,6 +319,11 @@ public class VaultProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInventoryMove(InventoryMoveItemEvent e) {
+        // Block hopper movement of TB flags entirely
+        if (plugin.getTieBreakManager().isTieBreakFlag(e.getItem())) {
+            e.setCancelled(true);
+            return;
+        }
         if (!flags.isFlag(e.getItem())) return;
         if (getVaultFromInventory(e.getSource()) != null) {
             e.setCancelled(true);
@@ -344,17 +420,73 @@ public class VaultProtectionListener implements Listener {
 
     private void scheduleStoreInVault(String owner, Team vault, Player p) {
         if (owner == null) return;
+        Team ownerTeam = teams.getTeam(owner);
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             flags.onFlagStoredInVault(owner, vault.getName());
             plugin.getFlagCarrierListener().applyGlowForPlayer(p);
         });
+        Msg.broadcast(
+            Component.text(p.getName(), Msg.WHITE)
+                .append(Component.text(" deposited ", Msg.LIGHT_BLUE))
+                .append(ownerTeam != null ? Msg.teamName(ownerTeam) : Component.text(owner, Msg.LIGHT_BLUE))
+                .append(Component.text("'s Flag in ", Msg.LIGHT_BLUE))
+                .append(Msg.teamName(vault))
+                .append(Component.text("'s vault!", Msg.LIGHT_BLUE)));
     }
 
-    private boolean inventoryHasFlag(org.bukkit.inventory.Inventory inv) {
+    private boolean isAnyFlag(ItemStack item) {
+        return flags.isFlag(item) || plugin.getTieBreakManager().isTieBreakFlag(item);
+    }
+
+    private boolean inventoryHasAnyFlag(org.bukkit.inventory.Inventory inv) {
+        var tbm = plugin.getTieBreakManager();
         for (ItemStack item : inv.getContents()) {
-            if (flags.isFlag(item)) return true;
+            if (flags.isFlag(item) || tbm.isTieBreakFlag(item)) return true;
         }
         return false;
+    }
+
+    private boolean isTBVaultInventory(org.bukkit.inventory.Inventory inv) {
+        if (!(inv.getHolder() instanceof BlockInventoryHolder bih)) return false;
+        return plugin.getTieBreakManager().isVaultBlock(bih.getBlock());
+    }
+
+    private void trackTBFlagDeposit(InventoryClickEvent e, Team vault, Player p) {
+        var tbm = plugin.getTieBreakManager();
+        UUID flagId = null;
+        // Cursor click with TB flag into vault slot
+        if (tbm.isTieBreakFlag(e.getCursor()) && e.getClickedInventory() == e.getInventory()) {
+            flagId = tbm.getTBFlagUUID(e.getCursor());
+        }
+        // Shift-click TB flag from player inventory into vault
+        else if (e.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY
+                && e.getClickedInventory() != null
+                && e.getClickedInventory().equals(p.getInventory())
+                && tbm.isTieBreakFlag(e.getCurrentItem())) {
+            flagId = tbm.getTBFlagUUID(e.getCurrentItem());
+        }
+        // Hotbar-swap: hotbar has TB flag being swapped into vault slot
+        else if (e.getAction() == InventoryAction.HOTBAR_SWAP
+                && e.getClickedInventory() == e.getInventory()
+                && !tbm.isTieBreakFlag(e.getCurrentItem())) {
+            int slot = e.getHotbarButton();
+            if (slot >= 0 && tbm.isTieBreakFlag(p.getInventory().getItem(slot))) {
+                flagId = tbm.getTBFlagUUID(p.getInventory().getItem(slot));
+            }
+        }
+        if (flagId == null) return;
+        final UUID id = flagId;
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            tbm.onTBInVault(id);
+            plugin.getFlagCarrierListener().applyGlowForPlayer(p);
+        });
+        Msg.broadcast(
+            Component.text(p.getName(), Msg.WHITE)
+                .append(Component.text(" deposited the ", Msg.LIGHT_BLUE))
+                .append(Component.text("Tie-Breaking Flag", Msg.WHITE).decorate(TextDecoration.BOLD))
+                .append(Component.text(" in ", Msg.LIGHT_BLUE))
+                .append(Msg.teamName(vault))
+                .append(Component.text("'s vault!", Msg.LIGHT_BLUE)));
     }
 
     private boolean isOwnTeamVault(org.bukkit.inventory.Inventory inv, Player p) {

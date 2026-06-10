@@ -60,6 +60,14 @@ public class TeamManager {
             try { t.addMember(UUID.fromString(m)); } catch (Exception ignored) {}
         }
 
+        var namesSection = c.getConfigurationSection("member_names");
+        if (namesSection != null) {
+            for (String key : namesSection.getKeys(false)) {
+                try { t.setMemberName(UUID.fromString(key), namesSection.getString(key)); }
+                catch (Exception ignored) {}
+            }
+        }
+
         t.setVaultRaw(
             c.getString("vault.world"),
             c.getInt("vault.x", 0),
@@ -81,6 +89,10 @@ public class TeamManager {
         List<String> members = new ArrayList<>();
         for (UUID u : t.getMembers()) members.add(u.toString());
         c.set("members", members);
+
+        var namesMap = new java.util.LinkedHashMap<String, String>();
+        t.getMemberNames().forEach((uid, name) -> namesMap.put(uid.toString(), name));
+        c.set("member_names", namesMap);
 
         c.set("vault.world",  t.getVaultWorld());
         c.set("vault.x",      t.getVaultX());
