@@ -186,45 +186,59 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
     }
 
     private void cmdAddMember(CommandSender s, String[] args) {
-        if (args.length < 3) { s.sendMessage("Usage: /stronghold addmember <team> <player>"); return; }
+        if (args.length < 3) { s.sendMessage("Usage: /stronghold addmember <team> <player> [player2...]"); return; }
         Team t = requireTeam(s, args[1]); if (t == null) return;
-        OfflinePlayer op = Bukkit.getOfflinePlayer(args[2]);
 
-        if (t.hasMember(op.getUniqueId())) {
-            s.sendMessage(plugin.getCfg().msg("player_already_in_team").replace("{team}", t.getName())); return;
+        boolean changed = false;
+        for (int i = 2; i < args.length; i++) {
+            String name = args[i];
+            OfflinePlayer op = Bukkit.getOfflinePlayer(name);
+
+            if (t.hasMember(op.getUniqueId())) {
+                s.sendMessage(plugin.getCfg().msg("player_already_in_team").replace("{team}", t.getName()).replace("{player}", name));
+                continue;
+            }
+            Team other = plugin.getTeamManager().getTeamOf(op.getUniqueId());
+            if (other != null) {
+                s.sendMessage(plugin.getCfg().msg("player_in_other_team").replace("{player}", name));
+                continue;
+            }
+
+            t.addMember(op.getUniqueId());
+            t.setMemberName(op.getUniqueId(), op.getName() != null ? op.getName() : name);
+            Player online = Bukkit.getPlayer(op.getUniqueId());
+            if (online != null) plugin.getScoreboardManager().addPlayer(online, t);
+
+            s.sendMessage(plugin.getCfg().msg("member_added").replace("{player}", name).replace("{team}", t.getName()));
+            plugin.audit(s.getName(), "Added " + name + " to " + t.getName());
+            changed = true;
         }
-        Team other = plugin.getTeamManager().getTeamOf(op.getUniqueId());
-        if (other != null) {
-            s.sendMessage(plugin.getCfg().msg("player_in_other_team")); return;
-        }
-
-        t.addMember(op.getUniqueId());
-        plugin.getTeamManager().save(t);
-
-        Player online = Bukkit.getPlayer(op.getUniqueId());
-        if (online != null) plugin.getScoreboardManager().addPlayer(online, t);
-
-        s.sendMessage(plugin.getCfg().msg("member_added").replace("{player}", args[2]).replace("{team}", t.getName()));
-        plugin.audit(s.getName(), "Added " + args[2] + " to " + t.getName());
+        if (changed) plugin.getTeamManager().save(t);
     }
 
     private void cmdRemoveMember(CommandSender s, String[] args) {
-        if (args.length < 3) { s.sendMessage("Usage: /stronghold removemember <team> <player>"); return; }
+        if (args.length < 3) { s.sendMessage("Usage: /stronghold removemember <team> <player> [player2...]"); return; }
         Team t = requireTeam(s, args[1]); if (t == null) return;
-        OfflinePlayer op = Bukkit.getOfflinePlayer(args[2]);
 
-        if (!t.hasMember(op.getUniqueId())) {
-            s.sendMessage(plugin.getCfg().msg("player_not_in_team").replace("{team}", t.getName())); return;
+        boolean changed = false;
+        for (int i = 2; i < args.length; i++) {
+            String name = args[i];
+            OfflinePlayer op = Bukkit.getOfflinePlayer(name);
+
+            if (!t.hasMember(op.getUniqueId())) {
+                s.sendMessage(plugin.getCfg().msg("player_not_in_team").replace("{team}", t.getName()).replace("{player}", name));
+                continue;
+            }
+
+            t.removeMember(op.getUniqueId());
+            Player online = Bukkit.getPlayer(op.getUniqueId());
+            if (online != null) plugin.getScoreboardManager().removePlayerFromTeam(online, t);
+
+            s.sendMessage(plugin.getCfg().msg("member_removed").replace("{player}", name).replace("{team}", t.getName()));
+            plugin.audit(s.getName(), "Removed " + name + " from " + t.getName());
+            changed = true;
         }
-
-        t.removeMember(op.getUniqueId());
-        plugin.getTeamManager().save(t);
-
-        Player online = Bukkit.getPlayer(op.getUniqueId());
-        if (online != null) plugin.getScoreboardManager().removePlayerFromTeam(online, t);
-
-        s.sendMessage(plugin.getCfg().msg("member_removed").replace("{player}", args[2]).replace("{team}", t.getName()));
-        plugin.audit(s.getName(), "Removed " + args[2] + " from " + t.getName());
+        if (changed) plugin.getTeamManager().save(t);
     }
 
     // ── Vault commands ────────────────────────────────────────────────────────
@@ -415,22 +429,58 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
         if (args.length < 2) { s.sendMessage("Usage: /stronghold inspect <team>"); return; }
         Team t = requireTeam(s, args[1]); if (t == null) return;
 
+        // 1. Stored names (set on addmember / refreshed on join — works offline and online)
+        java.util.Map<UUID, String> names = new java.util.HashMap<>(t.getMemberNames());
+
+        // 2. Bukkit offline-player cache for any still missing
+        java.util.List<UUID> unknown = new java.util.ArrayList<>();
+        for (UUID uid : t.getMembers()) {
+            if (names.containsKey(uid)) continue;
+            String n = Bukkit.getOfflinePlayer(uid).getName();
+            if (n != null) names.put(uid, n);
+            else unknown.add(uid);
+        }
+
+        if (unknown.isEmpty()) {
+            sendInspect(s, t, names);
+            return;
+        }
+
+        // 3. Mojang Sessions API for anything still unresolved (last resort)
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            for (UUID uid : unknown) {
+                String n = fetchMojangName(uid);
+                if (n != null) names.put(uid, n);
+            }
+            Bukkit.getScheduler().runTask(plugin, () -> sendInspect(s, t, names));
+        });
+    }
+
+    private void sendInspect(CommandSender s, Team t, java.util.Map<UUID, String> names) {
         s.sendMessage("§6[Team: " + t.getName() + "]");
         s.sendMessage("§7Color: §f" + t.getColor().name());
 
-        String cap = t.getCaptain() != null ? Bukkit.getOfflinePlayer(t.getCaptain()).getName() : "None";
+        String cap = "None";
+        if (t.getCaptain() != null) {
+            String n = names.getOrDefault(t.getCaptain(), Bukkit.getOfflinePlayer(t.getCaptain()).getName());
+            cap = n != null ? n : "§8" + t.getCaptain();
+        }
         s.sendMessage("§7Captain: §f" + cap);
+
         s.sendMessage("§7Members (" + t.getMembers().size() + "):");
         for (UUID uid : t.getMembers()) {
-            String name = Bukkit.getOfflinePlayer(uid).getName();
-            s.sendMessage("  §f" + (name != null ? name : uid.toString()));
+            String n = names.get(uid);
+            if (n != null) s.sendMessage("  §f" + n + " §8(" + uid + ")");
+            else           s.sendMessage("  §8" + uid + " §8(unknown)");
         }
+
         if (t.isVaultSet()) {
             s.sendMessage("§7Vault: §f" + t.getVaultWorld() + " " + t.getVaultX() + "," + t.getVaultY() + "," + t.getVaultZ()
                 + (t.isVaultLocked() ? " §c[LOCKED]" : " §a[unlocked]"));
         } else {
             s.sendMessage("§7Vault: §cNot set");
         }
+
         FlagRecord r = plugin.getFlagManager().getRecord(t.getName());
         if (r != null) {
             String state = switch (r.getState()) {
@@ -443,6 +493,27 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
             s.sendMessage("§7Flag: §7Not deployed");
         }
         s.sendMessage("§7Score: §f" + plugin.getFlagManager().computeScore(t));
+    }
+
+    /** Fetches a player's username from the Mojang Sessions API. Called from an async thread. */
+    private static String fetchMojangName(UUID uuid) {
+        try {
+            String id = uuid.toString().replace("-", "");
+            var url = new java.net.URI("https://sessionserver.mojang.com/session/minecraft/profile/" + id).toURL();
+            var conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(4000);
+            conn.setReadTimeout(4000);
+            conn.setRequestMethod("GET");
+            if (conn.getResponseCode() != 200) return null;
+            String json = new String(conn.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            // Response: {"id":"...","name":"PlayerName",...}
+            int i = json.indexOf("\"name\":\"");
+            if (i < 0) return null;
+            int start = i + 8, end = json.indexOf('"', start);
+            return end > start ? json.substring(start, end) : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void cmdTpVault(CommandSender s, String[] args) {
@@ -636,8 +707,8 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
                  "returnflag", "resetflag", "inspect",
                  "tpvault", "renameteam"            -> args.length == 2 ? filter(teamNames, args[1]) : Collections.emptyList();
             case "recolorteam"                      -> args.length == 2 ? filter(teamNames, args[1]) : args.length == 3 ? filter(DYE_COLORS, args[2]) : Collections.emptyList();
-            case "setcaptain", "addmember",
-                 "removemember"                     -> args.length == 2 ? filter(teamNames, args[1]) : Collections.emptyList();
+            case "setcaptain"                       -> args.length == 2 ? filter(teamNames, args[1]) : Collections.emptyList();
+            case "addmember", "removemember"        -> args.length == 2 ? filter(teamNames, args[1]) : filter(onlineNames(), args[args.length - 1]);
             case "start"                            -> args.length == 2 ? List.of("1h", "6h", "12h", "1d", "2d") : Collections.emptyList();
             case "restore"                          -> args.length == 2 ? listBackupFiles(args[1]) : Collections.emptyList();
             default                                 -> Collections.emptyList();
@@ -654,7 +725,8 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
 
     private boolean requireActivePhase(CommandSender s) {
         EventPhase ph = plugin.getEventManager().getPhase();
-        if (ph != EventPhase.ACTIVE && ph != EventPhase.PAUSED) {
+        if (ph != EventPhase.ACTIVE && ph != EventPhase.PAUSED
+                && ph != EventPhase.TIE_BREAK_COUNTDOWN && ph != EventPhase.TIE_BREAK_ACTIVE) {
             s.sendMessage(plugin.getCfg().msg("active_only"));
             return false;
         }
@@ -664,6 +736,12 @@ public class StrongholdCommand implements CommandExecutor, TabCompleter {
     private static List<String> filter(List<String> list, String prefix) {
         return list.stream()
             .filter(s -> s.toLowerCase().startsWith(prefix.toLowerCase()))
+            .collect(Collectors.toList());
+    }
+
+    private static List<String> onlineNames() {
+        return Bukkit.getOnlinePlayers().stream()
+            .map(Player::getName)
             .collect(Collectors.toList());
     }
 

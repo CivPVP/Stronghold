@@ -91,7 +91,11 @@ public class EventManager {
             case TIE_BREAK_ACTIVE -> {
                 long remaining = tiebreakActiveEnd - now;
                 if (remaining <= 0) Bukkit.getScheduler().runTask(plugin, this::endTieBreak);
-                else { schedulePhaseTask(remaining, this::endTieBreak); startBossbarTick(); }
+                else {
+                    schedulePhaseTask(remaining, this::endTieBreak);
+                    startBossbarTick();
+                    plugin.getTieBreakManager().rebuildRecordsFromWorld();
+                }
             }
             default -> {}
         }

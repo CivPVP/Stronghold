@@ -13,6 +13,7 @@ net\meddle\stronghold\listeners\VaultProtectionListener.class
 net\meddle\stronghold\flag\FlagManager.class
 net\meddle\stronghold\scoreboard\TeamScoreboardManager.class
 net\meddle\stronghold\team\TeamManager.class
+net\meddle\stronghold\tiebreak\TieBreakManager$TBState.class
 net\meddle\stronghold\listeners\FlagDespawnListener$1.class
 net\meddle\stronghold\tiebreak\TieBreakManager.class
 net\meddle\stronghold\team\Team.class
@@ -23,6 +24,7 @@ net\meddle\stronghold\event\EventPhase.class
 net\meddle\stronghold\listeners\FlagItemListener.class
 net\meddle\stronghold\listeners\FlagDespawnListener.class
 net\meddle\stronghold\flag\FlagManager$1.class
+net\meddle\stronghold\tiebreak\TieBreakManager$TBRecord.class
 net\meddle\stronghold\commands\StrongholdCommand$1.class
 net\meddle\stronghold\tiebreak\TieBreakManager$TieBreakVault.class
 net\meddle\stronghold\Msg$1.class

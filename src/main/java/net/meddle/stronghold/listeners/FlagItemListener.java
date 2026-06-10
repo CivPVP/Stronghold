@@ -43,7 +43,19 @@ public class FlagItemListener implements Listener {
 
         // Tie-breaking flag: only players from tied teams may pick it up
         if (plugin.getTieBreakManager().isTieBreakFlag(item)) {
-            if (!plugin.getTieBreakManager().isFromTiedTeam(p)) e.setCancelled(true);
+            if (!plugin.getTieBreakManager().isFromTiedTeam(p)) {
+                e.setCancelled(true);
+                return;
+            }
+            java.util.UUID flagId = plugin.getTieBreakManager().getTBFlagUUID(item);
+            if (flagId != null) plugin.getTieBreakManager().onTBPickedUp(flagId, p);
+            plugin.getFlagCarrierListener().applyGlowForPlayer(p);
+            Msg.broadcast(
+                Component.text(p.getName(), Msg.WHITE)
+                    .append(Component.text(" picked up the ", Msg.LIGHT_BLUE))
+                    .append(Component.text("Tie-Breaking Flag", Msg.WHITE).decorate(net.kyori.adventure.text.format.TextDecoration.BOLD))
+                    .append(Component.text("!", Msg.LIGHT_BLUE))
+            );
             return;
         }
 
@@ -84,6 +96,18 @@ public class FlagItemListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent e) {
         Item item = e.getItemDrop();
+
+        if (plugin.getTieBreakManager().isTieBreakFlag(item.getItemStack())) {
+            java.util.UUID flagId = plugin.getTieBreakManager().getTBFlagUUID(item.getItemStack());
+            if (flagId != null) {
+                plugin.getServer().getScheduler().runTask(plugin, () ->
+                    plugin.getTieBreakManager().onTBDropped(flagId, item.getLocation(), item.getUniqueId())
+                );
+            }
+            updateGlow(e.getPlayer());
+            return;
+        }
+
         if (!flags.isFlag(item.getItemStack())) return;
 
         String owner = flags.getFlagOwner(item.getItemStack());
@@ -114,22 +138,57 @@ public class FlagItemListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDeath(PlayerDeathEvent e) {
         Player p = e.getEntity();
+        // keepInventory: player keeps flags — no drop, no state change needed
+        if (Boolean.TRUE.equals(p.getWorld().getGameRuleValue(org.bukkit.GameRule.KEEP_INVENTORY))) return;
         List<ItemStack> drops = e.getDrops();
 
         for (ItemStack item : drops) {
+            if (plugin.getTieBreakManager().isTieBreakFlag(item)) {
+                java.util.UUID flagId = plugin.getTieBreakManager().getTBFlagUUID(item);
+                if (flagId == null) continue;
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    Entity found = p.getWorld().getNearbyEntities(p.getLocation(), 10, 10, 10).stream()
+                        .filter(en -> en instanceof Item it
+                            && plugin.getTieBreakManager().isTieBreakFlag(it.getItemStack())
+                            && flagId.equals(plugin.getTieBreakManager().getTBFlagUUID(it.getItemStack())))
+                        .findFirst().orElse(null);
+                    if (found != null) {
+                        plugin.getTieBreakManager().onTBDropped(flagId, found.getLocation(), found.getUniqueId());
+                        int x = found.getLocation().getBlockX();
+                        int y = found.getLocation().getBlockY();
+                        int z = found.getLocation().getBlockZ();
+                        Msg.broadcast(Component.text(p.getName(), Msg.WHITE)
+                            .append(Component.text(" died and dropped the ", Msg.LIGHT_BLUE))
+                            .append(Component.text("Tie-Breaking Flag", Msg.WHITE)
+                                .decorate(net.kyori.adventure.text.format.TextDecoration.BOLD))
+                            .append(Component.text(" at " + x + ", " + y + ", " + z + "!", Msg.LIGHT_BLUE)));
+                    }
+                    // If not found: orphan recovery (EntityRemoveEvent / periodic scan) will return it to vault
+                });
+                continue;
+            }
+
             if (!flags.isFlag(item)) continue;
             String owner = flags.getFlagOwner(item);
             if (owner == null) continue;
 
             plugin.getServer().getScheduler().runTask(plugin, () -> {
-                Entity found = p.getWorld().getNearbyEntities(p.getLocation(), 5, 5, 5).stream()
+                Entity found = p.getWorld().getNearbyEntities(p.getLocation(), 10, 10, 10).stream()
                     .filter(en -> en instanceof Item it && flags.isFlagOf(it.getItemStack(), owner))
                     .findFirst().orElse(null);
 
                 if (found != null) {
                     flags.onFlagDropped(owner, found.getLocation(), found.getUniqueId());
+                    Team ot = teams.getTeam(owner);
+                    int x = found.getLocation().getBlockX();
+                    int y = found.getLocation().getBlockY();
+                    int z = found.getLocation().getBlockZ();
+                    Msg.broadcast(Component.text(p.getName(), Msg.WHITE)
+                        .append(Component.text(" died and dropped ", Msg.LIGHT_BLUE))
+                        .append(ot != null ? Msg.teamName(ot) : Component.text(owner, Msg.LIGHT_BLUE))
+                        .append(Component.text("'s Flag at " + x + ", " + y + ", " + z + "!", Msg.LIGHT_BLUE)));
                 } else {
-                    // Item entity already gone (e.g. fell into void on death) — return directly
+                    // Item entity already gone (void on death) — return to vault
                     FlagRecord r = flags.getRecord(owner);
                     if (r != null && r.getState() == FlagState.HELD) {
                         Team vaultTeam = flags.placeInLastVault(owner);
@@ -137,8 +196,7 @@ public class FlagItemListener implements Listener {
                             Team ot = teams.getTeam(owner);
                             Msg.broadcast(
                                 (ot != null ? Msg.teamName(ot) : Component.text(owner, Msg.LIGHT_BLUE))
-                                    .append(Component.text("'s Flag has returned to its vault.", Msg.LIGHT_BLUE))
-                            );
+                                    .append(Component.text("'s Flag has returned to its vault.", Msg.LIGHT_BLUE)));
                         }
                     }
                 }
